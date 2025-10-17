@@ -1,5 +1,5 @@
 # env
-.env
+config.env
 
 # venv
 venv/
