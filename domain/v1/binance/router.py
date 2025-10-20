@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import APIRouter, WebSocket
 
 import hmac, hashlib
@@ -5,6 +7,7 @@ import requests
 import pprint
 import websockets
 
+from domain.v1.bitget.router import keep_alive
 from config.config import BINANCE_BASE_URL, BINANCE_WS_STREAM_BASE_URL, BINANCE_API_KEY, BINANCE_API_SECRET
 
 
@@ -33,9 +36,11 @@ async def get_currency(websocket: WebSocket):
     await websocket.accept()
 
     async with websockets.connect(BINANCE_WS_STREAM_BASE_URL + '/btcusdt@ticker') as binance_ws:
+        asyncio.create_task(keep_alive(binance_ws))
+
         while True:
             msg = await binance_ws.recv()
-            pprint.pprint(msg)
+            print(msg)
             await websocket.send_text(msg)
 
 
