@@ -2,6 +2,7 @@ import asyncio
 
 import websockets
 from fastapi import APIRouter, WebSocket
+from collections import OrderedDict
 
 import aiohttp
 import time
@@ -12,7 +13,6 @@ import base64
 import json
 
 from urllib.parse import urlencode
-from collections import OrderedDict
 from config.models.bitget import BitgetTrade
 from config.config import BITGET_API_KEY, BITGET_API_SECRET, BITGET_API_PASSPHRASE, BITGET_BASE_URL, BITGET_WS_BASE_URL
 
@@ -76,13 +76,13 @@ async def keep_alive(ws):
 
 
 # 전체 심볼 조회
-@router.get('/exchange_info')
-async def exchange_info():
+@router.get('/spot/public/symbols')
+async def spot_symbols():
     response = requests.get(url=BITGET_BASE_URL + '/spot/public/symbols')
     return response.json()
 
 
-# SPOT 현재가 조회 Ticker
+# TODO: 현재가 조회 Ticker spot/future 분기처리
 @router.websocket('/ws/spot/currency')
 async def get_spot_currency(websocket: WebSocket):
     await websocket.accept()
@@ -112,47 +112,6 @@ async def get_spot_currency(websocket: WebSocket):
             print(f"Bitget WS 연결 종료: {e}")
         finally:
             await websocket.close()
-
-
-# FUTURE 현재가 조회 Ticker
-@router.websocket('/ws/future/currency')
-async def get_future_currency(websocket: WebSocket):
-    await websocket.accept()
-    async with websockets.connect(BITGET_WS_BASE_URL, ping_interval=None) as bitget_ws:
-        subscribe_msg = {
-            "op": "subscribe",
-            "args": [
-                {
-                    "instType": "COIN-FUTURES",
-                    "channel": "ticker",
-                    "instId": "POPCATPERP_CMCBL"
-                }
-            ]
-        }
-        await bitget_ws.send(json.dumps(subscribe_msg))
-        asyncio.create_task(keep_alive(bitget_ws))
-        try:
-            while True:
-                msg = await bitget_ws.recv()
-                print(msg)
-                await websocket.send_text(msg)
-        except websockets.exceptions.ConnectionClosed as e:
-            print(f"Bitget WS 연결 종료: {e}")
-        finally:
-            await websocket.close()
-
-
-# 유저 자산 조회(spot)
-@router.get('/user/spot/asset')
-async def user_spot_asset():
-    timestamp = str(int(time.time() * 1000))
-    signature = generate_signature(timestamp, 'GET', '/api/v2/spot/account/assets')
-
-    headers = auth_headers(signature, timestamp)
-
-    response = requests.get(url=BITGET_BASE_URL + '/spot/account/assets', headers=headers)
-
-    return response.json()
 
 
 # SPOT 출금
@@ -196,4 +155,45 @@ async def spot_trade(trade_model: BitgetTrade):
     headers = auth_headers(signature, server_time)
 
     response = requests.post(url=BITGET_BASE_URL + '/spot/trade/place-order', headers=headers, json=body)
+    return response.json()
+
+
+# TODO: FUTURE 현재가 조회 Ticker
+@router.websocket('/ws/future/currency')
+async def get_future_currency(websocket: WebSocket):
+    await websocket.accept()
+    async with websockets.connect(BITGET_WS_BASE_URL, ping_interval=None) as bitget_ws:
+        subscribe_msg = {
+            "op": "subscribe",
+            "args": [
+                {
+                    "instType": "COIN-FUTURES",
+                    "channel": "ticker",
+                    "instId": "POPCATPERP_CMCBL"
+                }
+            ]
+        }
+        await bitget_ws.send(json.dumps(subscribe_msg))
+        asyncio.create_task(keep_alive(bitget_ws))
+        try:
+            while True:
+                msg = await bitget_ws.recv()
+                print(msg)
+                await websocket.send_text(msg)
+        except websockets.exceptions.ConnectionClosed as e:
+            print(f"Bitget WS 연결 종료: {e}")
+        finally:
+            await websocket.close()
+
+
+# TODO: 유저 자산 조회 spot/future 분기처리
+@router.get('/user/spot/asset')
+async def user_spot_asset():
+    timestamp = str(int(time.time() * 1000))
+    signature = generate_signature(timestamp, 'GET', '/api/v2/spot/account/assets')
+
+    headers = auth_headers(signature, timestamp)
+
+    response = requests.get(url=BITGET_BASE_URL + '/spot/account/assets', headers=headers)
+
     return response.json()
