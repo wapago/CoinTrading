@@ -2,8 +2,10 @@ from typing import Optional
 
 from .base import *
 
-class BinanceSpotTrade(Base):
+class BinanceSymbol(Base):
     symbol: str
+
+class BinanceSpotTrade(BinanceSymbol):
     side: str
     type: str
     quantity: Optional[str] = Field(default=None, description="Only required for limit orders")
@@ -13,8 +15,7 @@ class BinanceSpotTrade(Base):
     force: Optional[str] = Field(default=None, description="Only required for limit orders")
 
 
-class BinanceFutureTrade(Base):
-    symbol: str
+class BinanceFutureTrade(BinanceSymbol):
     leverage: str
     margin_type: str
     side: str

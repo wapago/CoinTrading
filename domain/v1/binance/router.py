@@ -11,7 +11,7 @@ import websockets
 from starlette.websockets import WebSocketState
 
 from domain.v1.bitget.router import keep_alive
-from config.models.binance import BinanceSpotTrade, BinanceFutureTrade, BinanceWithdrawal
+from config.models.binance import BinanceSpotTrade, BinanceFutureTrade, BinanceWithdrawal, BinanceSymbol
 from config.config import (BINANCE_BASE_URL, BINANCE_BASE_F_URL, BINANCE_WS_STREAM_BASE_URL,
                            BINANCE_WS_F_STREAM_BASE_URL, BINANCE_WS_COMBINED_STREAM_BASE_URL,
                            BINANCE_API_KEY, BINANCE_API_SECRET)
@@ -217,7 +217,6 @@ async def future_trade(trade_model: BinanceFutureTrade):
 
     lev_url = f"{BINANCE_BASE_F_URL}/fapi/v1/leverage?{lev_query}&signature={lev_signature}"
     lev_res = requests.post(lev_url, headers=HEADERS)
-    print("레버리지 설정:", lev_res.json())
 
     # 마진 모드 설정(Cross or Isolated)
     margin_params = OrderedDict([
@@ -235,8 +234,8 @@ async def future_trade(trade_model: BinanceFutureTrade):
 
     margin_url = f"{BINANCE_BASE_F_URL}/fapi/v1/marginType?{margin_query}&signature={margin_signature}"
     margin_res = requests.post(margin_url, headers=HEADERS)
-    print("마진모드 설정:", margin_res.json())
 
+    # 주문설정
     order_params = OrderedDict([
         ("symbol", trade_model.symbol.upper()),
         ("side", trade_model.side.upper()),
@@ -253,7 +252,6 @@ async def future_trade(trade_model: BinanceFutureTrade):
         order_params["quantity"] = trade_model.quantity
 
     query_string = urlencode(order_params, doseq=True)
-    print(query_string)
     signature = hmac.new(
         BINANCE_API_SECRET.encode(),
         query_string.encode(),
@@ -268,6 +266,64 @@ async def future_trade(trade_model: BinanceFutureTrade):
         "marginType": margin_res.json(),
         "order": order_res.json()
     }
+
+
+# FUTURE 미청산 포지션 조회
+@router.get('/future/')
+async def future_orders_unfinished(symbol: str = None):
+    servertime = str(requests.get(url=BINANCE_BASE_F_URL + '/fapi/v1/time').json()['serverTime'])
+
+    params = OrderedDict([
+        ("timestamp", servertime),
+        ("recvWindow", 60000)
+    ])
+    if symbol:
+        params['symbol'] = symbol
+
+    query_string = urlencode(params, doseq=True)
+    signature = hmac.new(
+        BINANCE_API_SECRET.encode(),
+        query_string.encode(),
+        hashlib.sha256
+    ).hexdigest()
+
+    url = f"{BINANCE_BASE_F_URL}/fapi/v2/positionRisk?{query_string}&signature={signature}"
+
+    response = requests.get(url, headers=HEADERS)
+    print(response.json())
+
+    # for resp in response.json():
+    #     if resp['positionAmt'] = '0':
+    #
+    #     if float(resp['positionAmt']) != 0.0:
+    #         print(resp)
+
+    return response.json()
+
+
+# FUTURE 주문조회
+@router.get('/future/all/orders')
+async def future_orders(symbol: str = None):
+    servertime = str(requests.get(url=BINANCE_BASE_F_URL + '/fapi/v1/time').json()['serverTime'])
+
+    params = OrderedDict([
+        ("timestamp", servertime),
+        ("recvWindow", 60000)
+    ])
+    if symbol:
+        params['symbol'] = symbol
+
+    query_string = urlencode(params, doseq=True)
+    signature = hmac.new(
+        BINANCE_API_SECRET.encode(),
+        query_string.encode(),
+        hashlib.sha256
+    ).hexdigest()
+
+    url = f"{BINANCE_BASE_F_URL}/fapi/v1/allOrders?{query_string}&signature={signature}"
+
+    response = requests.get(url, headers=HEADERS)
+    return response.json()
 
 
 # SPOT withdraw
