@@ -8,11 +8,13 @@ from urllib.parse import urlencode
 import hmac, hashlib, string
 import requests
 import websockets
+from starlette.websockets import WebSocketState
 
 from domain.v1.bitget.router import keep_alive
 from config.models.binance import BinanceSpotTrade, BinanceFutureTrade, BinanceWithdrawal
 from config.config import (BINANCE_BASE_URL, BINANCE_BASE_F_URL, BINANCE_WS_STREAM_BASE_URL,
-                           BINANCE_WS_F_STREAM_BASE_URL, BINANCE_API_KEY, BINANCE_API_SECRET)
+                           BINANCE_WS_F_STREAM_BASE_URL, BINANCE_WS_COMBINED_STREAM_BASE_URL,
+                           BINANCE_API_KEY, BINANCE_API_SECRET)
 
 
 router = APIRouter(
@@ -28,20 +30,52 @@ def get_usdt_spot_symbols():
     spot_info = requests.get(BINANCE_BASE_URL + '/api/v3/exchangeInfo').json()
     symbols = spot_info['symbols']
     spot_usdt_available = []
+
     for symbol in symbols:
-        if symbol['quoteAsset'] == 'USDT' and symbol['status'] == 'TRADING':
+        if symbol['quoteAsset'] == 'USDT' and symbol['status'] == 'TRADING' and symbol["symbol"].isascii():
             spot_usdt_available.append(symbol['symbol'].lower() + "@ticker")
-    print(len(spot_usdt_available))
+
     return spot_usdt_available
 
 
 def get_usdt_future_symbols():
+    """
+    @ticker: 현재가
+    @kline_1m: 1분봉 캔들(OHLC)
+    {
+      "e": "24hrTicker",
+      "E": 1729485220000,
+      "s": "BTCUSDT",
+      "p": "-54.20000000",
+      "P": "-0.16",
+      "w": "33350.38", ---> 24시간 동안의 평균 가격
+      "x": "33400.00",
+      "c": "33345.80", ---> 현재가(마지막 체결가)
+      "Q": "0.008",
+      "b": "33345.70",
+      "B": "0.018",
+      "a": "33345.80",
+      "A": "0.086",
+      "o": "33399.80",
+      "h": "33550.00",
+      "l": "33260.00",
+      "v": "8254.12", ---> 거래량
+      "q": "275411018.93",
+      "O": 1729398820000,
+      "C": 1729485219999,
+      "F": 123456789,
+      "L": 123456999,
+      "n": 211
+    }
+    :return:
+    """
     future_info = requests.get(BINANCE_BASE_F_URL + '/fapi/v1/exchangeInfo').json()
     symbols = future_info['symbols']
     future_usdt_available = []
+
     for symbol in symbols:
-        if symbol['quoteAsset'] == 'USDT' and symbol['status'] == 'TRADING':
-            future_usdt_available.append(symbol['symbol'] + "@ticker")
+        if symbol['quoteAsset'] == 'USDT' and symbol['status'] == 'TRADING' and symbol["symbol"].isascii():
+            future_usdt_available.append(symbol['symbol'].lower() + "@ticker")
 
     return future_usdt_available
 
@@ -61,20 +95,39 @@ async def user_asset():
 # FUTURE 현재가 ticker
 @router.websocket('/ws/future/currency')
 async def get_currency(websocket: WebSocket):
-    future_symbols = get_usdt_future_symbols()
-    symbols = ""
-    for symbol in future_symbols:
-        symbols += ('/' + symbol)
-
     await websocket.accept()
 
-    async with websockets.connect(BINANCE_WS_F_STREAM_BASE_URL + symbols) as binance_ws:
-        asyncio.create_task(keep_alive(binance_ws))
+    future_symbols = get_usdt_future_symbols()
+    symbols = future_symbols[0]
+    for symbol in future_symbols[1:]:
+        symbols += ('/' + symbol)
+    stream_url = BINANCE_WS_COMBINED_STREAM_BASE_URL + symbols
 
-        while True:
-            msg = await binance_ws.recv()
-            print(msg)
-            await websocket.send_text(msg)
+    ping_task = None
+
+    try:
+        async with websockets.connect(stream_url, ping_interval=None) as binance_ws:
+            ping_task = asyncio.create_task(keep_alive(binance_ws))
+            while True:
+                msg = await binance_ws.recv()
+                print(msg)
+                if websocket.client_state == WebSocketState.DISCONNECTED:
+                    print("클라이언트와 연결 끊김")
+                    break
+                elif websocket.client_state == WebSocketState.CONNECTED:
+                    await websocket.send_text(msg)
+    except websockets.ConnectionClosedOK:
+        print("websocket 정상종료")
+    except websockets.ConnectionClosedError as e:
+        print(f"websocket 비정상종료: {e}")
+    except RuntimeError as e:
+        print(f"클라이언트가 연결을 끊은 후 send 시도: {e}")
+    finally:
+        print("연결상태: ", websocket.client_state)
+        if websocket.client_state != WebSocketState.DISCONNECTED:
+            ping_task.cancel()
+            await websocket.close()
+        print("클라이언트 연결 닫힘")
 
 
 # SPOT 현재가 ticker
@@ -85,6 +138,8 @@ async def get_currency(websocket: WebSocket):
     symbols = ""
     for symbol in spot_symbols:
         symbols += ('/' + symbol)
+
+    print(BINANCE_WS_STREAM_BASE_URL + symbols)
 
     # 클라이언트 연결 수락
     await websocket.accept()
@@ -136,6 +191,10 @@ async def future_trade(trade_model: BinanceFutureTrade):
         1. 심볼별 레버리지 변경
         2. 심볼별 마진 모드 변경
         3. 실제 주문 실행
+        GTC: 체결될 때까지 계속 유지 (기본값)
+        IOC: 즉시 체결 가능한 만큼만 체결, 나머지는 취소
+        FOK: 전량이 즉시 체결되지 않으면 전부 취소
+        GTX: 즉시 체결될 상황이면 자동 취소
         :param trade_model:
         :return:
     """
@@ -192,14 +251,6 @@ async def future_trade(trade_model: BinanceFutureTrade):
         order_params["price"] = trade_model.price
     elif trade_model.type.upper()== "MARKET":
         order_params["quantity"] = trade_model.quantity
-    elif trade_model.type.upper()== "STOP" or "TAKE_PROFIT":
-        order_params["quantity"] = trade_model.quantity
-        order_params["price"] = trade_model.price
-        order_params["stopPrice"] = trade_model.stop_price
-    elif trade_model.type.upper()== "STOP_MARKET" or "TAKE_PROFIT_MARKET":
-        order_params["stopPrice"] = trade_model.stop_price
-    elif trade_model.type.upper()== "TRAILING_STOP_MARKET":
-        order_params["callbackRate"] = trade_model.callback_rate
 
     query_string = urlencode(order_params, doseq=True)
     print(query_string)

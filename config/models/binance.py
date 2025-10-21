@@ -24,8 +24,6 @@ class BinanceFutureTrade(Base):
     quantity: Optional[str] = Field(default=None, description="Required for limit orders")
     price: Optional[str] = Field(default=None, description="Only required for limit orders")
     quote_order_qty: Optional[str] = Field(default=None, description="Only required for limit orders")
-    stop_price: Optional[str] = Field(default=None, description="Required for stop/take profit orders")
-    callback_rate: Optional[str] = Field(default=None, description="Only required for TRAILING_STOP_MARKET orders")
 
 
 class BinanceWithdrawal(Base):
