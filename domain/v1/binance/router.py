@@ -269,8 +269,8 @@ async def future_trade(trade_model: BinanceFutureTrade):
 
 
 # FUTURE 미청산 포지션 조회
-@router.get('/future/')
-async def future_orders_unfinished(symbol: str = None):
+@router.get('/future/unliquidated')
+async def future_orders_unliquidated(symbol: str = None):
     servertime = str(requests.get(url=BINANCE_BASE_F_URL + '/fapi/v1/time').json()['serverTime'])
 
     params = OrderedDict([
@@ -289,16 +289,14 @@ async def future_orders_unfinished(symbol: str = None):
 
     url = f"{BINANCE_BASE_F_URL}/fapi/v2/positionRisk?{query_string}&signature={signature}"
 
-    response = requests.get(url, headers=HEADERS)
-    print(response.json())
+    response_json = requests.get(url, headers=HEADERS).json()
+    unliquidated_symbol_list = []
 
-    # for resp in response.json():
-    #     if resp['positionAmt'] = '0':
-    #
-    #     if float(resp['positionAmt']) != 0.0:
-    #         print(resp)
+    for resp in response_json:
+        if float(resp['positionAmt']) != 0.0:
+            unliquidated_symbol_list.append(resp)
 
-    return response.json()
+    return unliquidated_symbol_list
 
 
 # FUTURE 주문조회
