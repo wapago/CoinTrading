@@ -1,3 +1,4 @@
+import json
 import time
 import asyncio
 
@@ -10,7 +11,6 @@ import requests
 import websockets
 from starlette.websockets import WebSocketState
 
-from domain.v1.bitget.router import keep_alive
 from config.models.binance import BinanceSpotTrade, BinanceFutureTrade, BinanceWithdrawal, BinanceSymbol
 from config.config import (BINANCE_BASE_URL, BINANCE_BASE_F_URL, BINANCE_WS_STREAM_BASE_URL,
                            BINANCE_WS_F_STREAM_BASE_URL, BINANCE_WS_COMBINED_STREAM_BASE_URL,
@@ -87,6 +87,8 @@ async def user_asset():
     query_string = f"timestamp={servertime}&recvWindow=60000"
     signature = hmac.new(BINANCE_API_SECRET.encode(), query_string.encode(), hashlib.sha256).hexdigest()
     url = f"https://api.binance.com/sapi/v3/asset/getUserAsset?{query_string}&signature={signature}"
+    # url = f"https://fapi.binance.com/fapi/v2/account?{query_string}&signature={signature}"
+
     response = requests.post(url, headers=HEADERS)
 
     return response.json()
@@ -97,20 +99,20 @@ async def user_asset():
 async def get_currency(websocket: WebSocket):
     await websocket.accept()
 
-    future_symbols = get_usdt_future_symbols()
-    symbols = future_symbols[0]
-    for symbol in future_symbols[1:]:
-        symbols += ('/' + symbol)
-    stream_url = BINANCE_WS_COMBINED_STREAM_BASE_URL + symbols
+    # future_symbols = get_usdt_future_symbols()
+    # symbols = future_symbols[0]
+    # for symbol in future_symbols[1:]:
+    #     symbols += ('/' + symbol)
+    # stream_url = BINANCE_WS_COMBINED_STREAM_BASE_URL + symbols
+    stream_url = BINANCE_WS_COMBINED_STREAM_BASE_URL + '/btcusdt@ticker'
 
-    ping_task = None
 
     try:
         async with websockets.connect(stream_url, ping_interval=None) as binance_ws:
-            ping_task = asyncio.create_task(keep_alive(binance_ws))
             while True:
                 msg = await binance_ws.recv()
-                print(msg)
+                recv_data = json.loads(msg)
+                print(recv_data['data']['c'])
                 if websocket.client_state == WebSocketState.DISCONNECTED:
                     print("클라이언트와 연결 끊김")
                     break
@@ -125,7 +127,6 @@ async def get_currency(websocket: WebSocket):
     finally:
         print("연결상태: ", websocket.client_state)
         if websocket.client_state != WebSocketState.DISCONNECTED:
-            ping_task.cancel()
             await websocket.close()
         print("클라이언트 연결 닫힘")
 
@@ -134,22 +135,20 @@ async def get_currency(websocket: WebSocket):
 # TODO: 유저가 가진 자산만 골라서 보내기
 @router.websocket('/ws/currency')
 async def get_currency(websocket: WebSocket):
-    spot_symbols = get_usdt_spot_symbols()
-    symbols = ""
-    for symbol in spot_symbols:
-        symbols += ('/' + symbol)
-
-    print(BINANCE_WS_STREAM_BASE_URL + symbols)
+    # spot_symbols = get_usdt_spot_symbols()
+    # symbols = ""
+    # for symbol in spot_symbols:
+    #     symbols += ('/' + symbol)
 
     # 클라이언트 연결 수락
     await websocket.accept()
     # 바이낸스 웹소켓 서버 연결
-    async with websockets.connect(BINANCE_WS_STREAM_BASE_URL + symbols) as binance_ws:
-        asyncio.create_task(keep_alive(binance_ws))
+    async with websockets.connect(BINANCE_WS_STREAM_BASE_URL + '/btcusdt@ticker', ping_interval=30, ping_timeout=10) as binance_ws:
 
         while True:
             msg = await binance_ws.recv() # 주기적 요청 X. 바이낸스서버가 push하면 즉시 수신
-            print(msg)
+            recv_data = json.loads(msg)
+            print(recv_data['c'])
             await websocket.send_text(msg)
 
 
@@ -350,9 +349,3 @@ async def spot_withdrawal(withdraw_model: BinanceWithdrawal):
     url = f"{BINANCE_BASE_URL}/sapi/v1/capital/withdraw/apply?{query_string}&signature={signature}"
     response = requests.post(url, headers=HEADERS)
     return response.json()
-
-
-# @router.get("/exchange_info")
-# async def exchange_info():
-#     response = requests.get(url=BINANCE_BASE_URL + '/exchangeInfo', params={"symbolStatus":"TRADING"})
-#     return response.json()
