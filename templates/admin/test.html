@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Connection Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: #f0f0f0;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .info {
+            background: #e8f4fd;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .success {
+            color: green;
+            font-weight: bold;
+        }
+        .error {
+            color: red;
+            font-weight: bold;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        #results {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 5px;
+            white-space: pre-line;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 연결 테스트 페이지</h1>
+
+        <div class="info">
+            <p><strong>서버 정보:</strong></p>
+            <p>공인 IP: 121.78.123.225:8001</p>
+            <p>현재 시간: <span id="currentTime"></span></p>
+            <p>접속 기기: <span id="userAgent"></span></p>
+            <p>화면 크기: <span id="screenSize"></span></p>
+        </div>
+
+        <div>
+            <h3>테스트 항목:</h3>
+            <button onclick="testBasicConnection()">1. 기본 연결 테스트</button>
+            <button onclick="testAPI()">2. API 테스트</button>
+            <button onclick="testAuth()">3. 인증 테스트</button>
+            <button onclick="testStorage()">4. 저장소 테스트</button>
+            <button onclick="testAll()">전체 테스트</button>
+        </div>
+
+        <div id="results"></div>
+    </div>
+
+    <script>
+        // 페이지 로드 시 기본 정보 표시
+        document.getElementById('currentTime').textContent = new Date().toLocaleString();
+        document.getElementById('userAgent').textContent = navigator.userAgent.substring(0, 50) + '...';
+        document.getElementById('screenSize').textContent = `${window.innerWidth} x ${window.innerHeight}`;
+
+        const resultsDiv = document.getElementById('results');
+
+        function log(message, isError = false) {
+            const time = new Date().toLocaleTimeString();
+            const className = isError ? 'error' : 'success';
+            resultsDiv.innerHTML += `<div class="${className}">[${time}] ${message}</div>`;
+        }
+
+        function testBasicConnection() {
+            resultsDiv.innerHTML = '<h4>기본 연결 테스트</h4>';
+            log('페이지 로드 성공 ✓');
+            log('JavaScript 실행 성공 ✓');
+            log(`현재 URL: ${window.location.href}`);
+            log(`프로토콜: ${window.location.protocol}`);
+        }
+
+        async function testAPI() {
+            resultsDiv.innerHTML = '<h4>API 테스트</h4>';
+
+            try {
+                // 공개 API 테스트
+                const response = await fetch('/api/admin/users');
+                log(`API 응답 상태: ${response.status}`);
+
+                if (response.status === 401) {
+                    log('인증 필요 (정상) ✓');
+                } else {
+                    log('예상치 못한 응답', true);
+                }
+
+                const data = await response.json();
+                log(`응답 데이터: ${JSON.stringify(data).substring(0, 100)}...`);
+            } catch (error) {
+                log(`API 오류: ${error.message}`, true);
+            }
+        }
+
+        async function testAuth() {
+            resultsDiv.innerHTML = '<h4>인증 테스트</h4>';
+
+            try {
+                // 로그인 테스트
+                const response = await fetch('/api/admin/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        username: 'test',
+                        password: 'test'
+                    })
+                });
+
+                log(`로그인 API 상태: ${response.status}`);
+                const data = await response.json();
+
+                if (response.status === 401) {
+                    log('잘못된 자격증명 거부 (정상) ✓');
+                } else {
+                    log(`응답: ${JSON.stringify(data)}`);
+                }
+            } catch (error) {
+                log(`인증 오류: ${error.message}`, true);
+            }
+        }
+
+        function testStorage() {
+            resultsDiv.innerHTML = '<h4>저장소 테스트</h4>';
+
+            // localStorage 테스트
+            try {
+                localStorage.setItem('test', 'value');
+                const value = localStorage.getItem('test');
+                localStorage.removeItem('test');
+                log('localStorage 정상 ✓');
+            } catch (e) {
+                log('localStorage 오류: ' + e.message, true);
+            }
+
+            // sessionStorage 테스트
+            try {
+                sessionStorage.setItem('test', 'value');
+                const value = sessionStorage.getItem('test');
+                sessionStorage.removeItem('test');
+                log('sessionStorage 정상 ✓');
+            } catch (e) {
+                log('sessionStorage 오류: ' + e.message, true);
+            }
+
+            // Cookie 테스트
+            try {
+                document.cookie = 'test=value; path=/';
+                const hasCookie = document.cookie.includes('test=value');
+                if (hasCookie) {
+                    log('Cookie 정상 ✓');
+                } else {
+                    log('Cookie 설정 실패', true);
+                }
+            } catch (e) {
+                log('Cookie 오류: ' + e.message, true);
+            }
+        }
+
+        async function testAll() {
+            resultsDiv.innerHTML = '<h4>전체 테스트 시작</h4>';
+            testBasicConnection();
+            await new Promise(r => setTimeout(r, 500));
+            await testAPI();
+            await new Promise(r => setTimeout(r, 500));
+            await testAuth();
+            await new Promise(r => setTimeout(r, 500));
+            testStorage();
+            log('\n=== 전체 테스트 완료 ===');
+        }
+
+        // 네트워크 상태 확인
+        if (navigator.onLine) {
+            log('네트워크 연결됨 ✓');
+        } else {
+            log('네트워크 오프라인', true);
+        }
+    </script>
+</body>
+</html>

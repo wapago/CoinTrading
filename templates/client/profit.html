@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>V10 자동매매 손익내역</title>
+    <style>
+        body { 
+            background: #f5f8fe; 
+            font-family: 'Noto Sans KR', sans-serif;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: #fff;
+            padding: 40px;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(50,110,180,0.10);
+        }
+        .title {
+            color: #2386ff;
+            font-size: 2rem;
+            font-weight: 800;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .date-filter {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            justify-content: center;
+            margin-bottom: 30px;
+        }
+        .date-input {
+            padding: 8px 12px;
+            border: 1px solid #dbe6fa;
+            border-radius: 6px;
+            font-size: 1rem;
+        }
+        .filter-btn {
+            padding: 8px 20px;
+            background: #2386ff;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        .filter-btn:hover {
+            background: #1976d2;
+        }
+        .chart-container {
+            margin-bottom: 40px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 12px;
+        }
+        .chart-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: #333;
+        }
+        #profitChart {
+            max-width: 100%;
+            height: 400px;
+        }
+        .stats-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 30px;
+        }
+        .stats-table th {
+            background: #eaf4ff;
+            padding: 12px;
+            text-align: center;
+            font-weight: 600;
+            border: 1px solid #dbe6fa;
+        }
+        .stats-table td {
+            padding: 10px;
+            text-align: center;
+            border: 1px solid #dbe6fa;
+        }
+        .profit {
+            color: #21af78;
+            font-weight: 600;
+        }
+        .loss {
+            color: #e74c3c;
+            font-weight: 600;
+        }
+        .back-btn {
+            display: block;
+            margin: 30px auto 0;
+            padding: 15px 40px;
+            background: #2386ff;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.1rem;
+            font-weight: 700;
+            cursor: pointer;
+            text-decoration: none;
+            text-align: center;
+            max-width: 200px;
+        }
+        .back-btn:hover {
+            background: #1976d2;
+        }
+        .summary-section {
+            background: #f0f4ff;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        .summary-item {
+            display: inline-block;
+            margin: 0 20px;
+        }
+        .summary-label {
+            font-size: 0.9rem;
+            color: #666;
+            margin-bottom: 5px;
+        }
+        .summary-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1 class="title">V10 자동매매 손익내역</h1>
+
+        <!-- 날짜 필터 -->
+        <form method="get" action="/profit" class="date-filter">
+            <label>시작일:</label>
+            <input type="date" name="start_date" id="startDate" class="date-input" value="{{ start_date or '' }}">
+            <label>종료일:</label>
+            <input type="date" name="end_date" id="endDate" class="date-input" value="{{ end_date or '' }}">
+            <button type="submit" class="filter-btn">기간조회</button>
+        </form>
+
+        <!-- 요약 정보 -->
+        <div class="summary-section">
+            <div class="summary-item">
+                <div class="summary-label">총 거래 일수</div>
+                <div class="summary-value">{{ daily_stats|length if daily_stats else 0 }}일</div>
+            </div>
+            <div class="summary-item">
+                <div class="summary-label">총 익절 횟수</div>
+                <div class="summary-value profit">
+                    {% set total_wins = chart_data.wins|sum if chart_data and chart_data.wins else 0 %}
+                    {{ total_wins }}회
+                </div>
+            </div>
+            <div class="summary-item">
+                <div class="summary-label">총 손절 횟수</div>
+                <div class="summary-value loss">
+                    {% set total_losses = chart_data.losses|sum if chart_data and chart_data.losses else 0 %}
+                    {{ total_losses }}회
+                </div>
+            </div>
+            <div class="summary-item">
+                <div class="summary-label">승률</div>
+                <div class="summary-value">
+                    {% set win_rate = (total_wins / (total_wins + total_losses) * 100) if (total_wins + total_losses) > 0 else 0 %}
+                    {{ win_rate|round(1) }}%
+                </div>
+            </div>
+        </div>
+
+        <!-- 차트 영역 -->
+        <div class="chart-container">
+            <h3 class="chart-title">일자별 익절/손절 현황</h3>
+            <canvas id="profitChart"></canvas>
+        </div>
+
+        <!-- 일별 통계 테이블 -->
+        <table class="stats-table">
+            <thead>
+                <tr>
+                    <th>No</th>
+                    <th>날짜</th>
+                    <th>손익</th>
+                    <th>익절</th>
+                    <th>손절</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if daily_stats %}
+                    {% for date, stats in daily_stats.items()|sort %}
+                    <tr>
+                        <td>{{ loop.index }}</td>
+                        <td>{{ date }}</td>
+                        <td class="{{ 'profit' if stats.profit >= 0 else 'loss' }}">
+                            {{ stats.profit|round(2) }} USDT
+                        </td>
+                        <td class="profit">{{ stats.win }}</td>
+                        <td class="loss">{{ stats.loss }}</td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="5" style="color: #999;">조회된 거래 내역이 없습니다.</td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+
+        <a href="/dashboard" class="back-btn">대시보드로 가기</a>
+    </div>
+
+    <script>
+        // 차트 데이터
+        const chartData = {{ chart_data|tojson if chart_data else '{}' }};
+        
+        // 차트 그리기
+        if (chartData && chartData.labels && chartData.labels.length > 0) {
+            const ctx = document.getElementById('profitChart').getContext('2d');
+            
+            // 일자별 익절/손절 중 큰 수를 기준으로 막대 높이 설정
+            const maxValues = chartData.labels.map((label, index) => {
+                return Math.max(chartData.wins[index] || 0, chartData.losses[index] || 0);
+            });
+            
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: chartData.labels,
+                    datasets: [{
+                        label: '익절',
+                        data: chartData.wins,
+                        backgroundColor: '#21af78',
+                        borderColor: '#1a8a5e',
+                        borderWidth: 1,
+                        barPercentage: 0.8,
+                        categoryPercentage: 0.8
+                    }, {
+                        label: '손절',
+                        data: chartData.losses.map(v => -v), // 음수로 표시하여 아래쪽에 그리기
+                        backgroundColor: '#e74c3c',
+                        borderColor: '#c0392b',
+                        borderWidth: 1,
+                        barPercentage: 0.8,
+                        categoryPercentage: 0.8
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            labels: {
+                                padding: 20,
+                                font: {
+                                    size: 14
+                                }
+                            }
+                        },
+                        title: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    // 절대값으로 표시
+                                    label += Math.abs(context.parsed.y) + '회';
+                                    return label;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: {
+                                display: false
+                            },
+                            ticks: {
+                                font: {
+                                    size: 12
+                                }
+                            }
+                        },
+                        y: {
+                            grid: {
+                                borderDash: [5, 5],
+                                color: '#e0e0e0'
+                            },
+                            ticks: {
+                                callback: function(value) {
+                                    return Math.abs(value);
+                                },
+                                font: {
+                                    size: 12
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // 페이지 로드 시 날짜 설정
+        document.addEventListener('DOMContentLoaded', function() {
+            // 종료일이 설정되지 않았으면 오늘 날짜로
+            const endDateInput = document.getElementById('endDate');
+            if (!endDateInput.value) {
+                endDateInput.value = new Date().toISOString().split('T')[0];
+            }
+            
+            // 시작일이 설정되지 않았으면 30일 전으로
+            const startDateInput = document.getElementById('startDate');
+            if (!startDateInput.value) {
+                const monthAgo = new Date();
+                monthAgo.setDate(monthAgo.getDate() - 30);
+                startDateInput.value = monthAgo.toISOString().split('T')[0];
+            }
+        });
+    </script>
+</body>
+</html>

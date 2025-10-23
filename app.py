@@ -1,7 +1,9 @@
 from uvicorn import run
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
-from domain.v1 import binance, bitget
+from domain.v1 import binance, bitget, blockfin
+from config import static_path
 
 
 app = FastAPI(
@@ -9,8 +11,10 @@ app = FastAPI(
     version='0.0.1'
 )
 
+app.mount('/static', StaticFiles(directory=static_path), name='static')
 app.include_router(binance.router)
 app.include_router(bitget.router)
+app.include_router(blockfin.router)
 
 
 

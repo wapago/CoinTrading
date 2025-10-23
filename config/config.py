@@ -4,6 +4,8 @@ from dotenv import load_dotenv
 
 root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 file = os.path.join(root, 'config')
+static_path = os.path.join(root, 'static')
+templates_path = os.path.join(root, 'templates')
 
 load_dotenv(os.path.join(file, 'config.env'))
 
@@ -23,5 +25,8 @@ BITGET_API_PASSPHRASE = os.getenv('BITGET_API_PASSPHRASE')
 BITGET_BASE_URL = os.getenv('BITGET_BASE_URL')
 BITGET_WS_BASE_URL = os.getenv('BITGET_WS_BASE_URL')
 
-# TYG9kqrCvhYSZSVD4N4dxpDCwo6fqGh7n1
-# coin_set = requests.get(BITGET_BASE_URL + '/spot/public/coins', params={"coin":"TRX"}).json()
+BLOCKFIN_API_KEY = os.getenv('BLOCKFIN_API_KEY')
+BLOCKFIN_API_SECRET = os.getenv('BLOCKFIN_API_SECRET')
+BLOCKFIN_API_PASSPHRASE = os.getenv('BLOCKFIN_API_PASSPHRASE')
+BLOCKFIN_BASE_URL = os.getenv('BLOCKFIN_BASE_URL')
+BLOCKFIN_WS_BASE_URL = os.getenv('BLOCKFIN_WS_BASE_URL')

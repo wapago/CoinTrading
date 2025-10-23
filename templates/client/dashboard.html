@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>V10 자동매매 대시보드</title>
+    <style>
+        body { 
+            background: #f5f8fe; 
+            font-family: 'Noto Sans KR', sans-serif;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .header {
+            background: #fff;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 16px rgba(50,110,180,0.10);
+            margin-bottom: 20px;
+        }
+        .title {
+            color: #2386ff;
+            font-size: 2rem;
+            font-weight: 800;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .coin-selector {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .coin-btn {
+            padding: 10px 30px;
+            border: 2px solid #2386ff;
+            background: #fff;
+            color: #2386ff;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1.1rem;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+        .coin-btn.active {
+            background: #2386ff;
+            color: #fff;
+        }
+        .coin-btn:hover {
+            background: #2386ff;
+            color: #fff;
+        }
+        .chart-container {
+            background: #fff;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 16px rgba(50,110,180,0.10);
+            margin-bottom: 20px;
+            min-height: 400px;
+            height: 600px;
+            position: relative;
+            overflow: hidden;
+        }
+        #tradingview_chart {
+            width: 100% !important;
+            height: calc(100% - 20px) !important;
+        }
+        .resize-handle {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 20px;
+            background: #f5f5f5;
+            cursor: ns-resize;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-top: 1px solid #e0e0e0;
+            transition: all 0.2s;
+        }
+        .resize-handle::before {
+            content: '';
+            width: 40px;
+            height: 4px;
+            background: #ccc;
+            border-radius: 2px;
+            display: block;
+            position: absolute;
+            top: 8px;
+        }
+        .resize-handle:hover {
+            background: #e8f0ff;
+            border-top-color: #2386ff;
+        }
+        .resize-handle:hover::before {
+            background: #2386ff;
+        }
+        .resize-handle:active {
+            background: #d4e4ff;
+        }
+        .position-info {
+            background: #fff;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 16px rgba(50,110,180,0.10);
+            margin-bottom: 20px;
+        }
+        .info-title {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 15px;
+        }
+        .position-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .position-table th {
+            background: #eaf4ff;
+            padding: 12px;
+            text-align: center;
+            font-weight: 600;
+            border: 1px solid #dbe6fa;
+        }
+        .position-table td {
+            padding: 10px;
+            text-align: center;
+            border: 1px solid #dbe6fa;
+        }
+        .profit {
+            color: #21af78;
+            font-weight: 600;
+        }
+        .loss {
+            color: #e74c3c;
+            font-weight: 600;
+        }
+        .date-filter {
+            background: #fff;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 16px rgba(50,110,180,0.10);
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            justify-content: center;
+        }
+        .date-input {
+            padding: 8px 12px;
+            border: 1px solid #dbe6fa;
+            border-radius: 6px;
+            font-size: 1rem;
+        }
+        .filter-btn {
+            padding: 8px 20px;
+            background: #2386ff;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        .control-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            flex-wrap: wrap;
+            margin-top: 30px;
+        }
+        .control-btn {
+            padding: 15px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s;
+            min-width: 150px;
+        }
+        .btn-active {
+            background: #2386ff;
+            color: #fff;
+        }
+        .btn-inactive {
+            background: #6c757d;
+            color: #fff;
+        }
+        .btn-nav {
+            background: #2386ff;
+            color: #fff;
+        }
+        .trade-history {
+            background: #fff;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 16px rgba(50,110,180,0.10);
+            margin-bottom: 20px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .admin-warning {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            margin-bottom: 20px;
+            display: none;
+        }
+        .btn-disabled {
+            opacity: 0.5;
+            cursor: not-allowed !important;
+        }
+    </style>
+    <!-- TradingView Widget -->
+    <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1 class="title">V10 자동매매 대시보드</h1>
+            
+            <div class="coin-selector">
+                <button class="coin-btn {% if settings.symbol == 'BTCUSDT' %}active{% endif %}" data-symbol="BTCUSDT">비트코인 (BTC)</button>
+                <button class="coin-btn {% if settings.symbol == 'ETHUSDT' %}active{% endif %}" data-symbol="ETHUSDT">이더리움 (ETH)</button>
+            </div>
+        </div>
+
+        <div class="admin-warning" id="adminWarning">
+            관리자에 의해 중단되었습니다. 로그아웃됩니다...
+        </div>
+
+        <!-- TradingView 차트 -->
+        <div class="chart-container" id="chartContainer">
+            <div id="tradingview_chart"></div>
+            <div class="resize-handle" id="resizeHandle"></div>
+        </div>
+
+        <!-- 포지션 정보 -->
+        <div class="position-info">
+            <h3 class="info-title">현재 포지션</h3>
+            <table class="position-table">
+                <thead>
+                    <tr>
+                        <th>종목</th>
+                        <th>방향</th>
+                        <th>진입가</th>
+                        <th>평단가</th>
+                        <th>진입수량</th>
+                        <th>포지션</th>
+                        <th>미실현손익</th>
+                        <th>미실현손익%</th>
+                    </tr>
+                </thead>
+                <tbody id="positionTableBody">
+                    {% if positions %}
+                        {% for pos in positions %}
+                        <tr>
+                            <td>{{ pos.symbol }}</td>
+                            <td>{{ '롱' if pos.side == 'LONG' else '숏' }}</td>
+                            <td>{{ pos.entry_price }}</td>
+                            <td>{{ pos.entry_price }}</td>
+                            <td>{{ pos.size }}</td>
+                            <td>{{ pos.side }}</td>
+                            <td class="{{ 'profit' if pos.pnl >= 0 else 'loss' }}">{{ pos.pnl|round(2) }} USDT</td>
+                            <td class="{{ 'profit' if pos.pnl_rate >= 0 else 'loss' }}">{{ pos.pnl_rate|round(2) }}%</td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="8" style="color: #999;">포지션 없음</td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- 날짜 필터 -->
+        <div class="date-filter">
+            <form method="get" action="/dashboard" style="display: flex; align-items: center; gap: 15px;">
+                <label>시작일:</label>
+                <input type="date" name="start_date" id="startDate" class="date-input" value="{{ request.args.get('start_date', '') }}">
+                <label>종료일:</label>
+                <input type="date" name="end_date" id="endDate" class="date-input" value="{{ request.args.get('end_date', '') }}">
+                <button type="submit" class="filter-btn">기간조회</button>
+            </form>
+        </div>
+
+        <!-- 실행 로그 -->
+        <div class="trade-history">
+            <h3 class="info-title">실행 로그</h3>
+            <div id="executionLogs" style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 15px; max-height: 300px; overflow-y: auto; font-family: monospace; font-size: 0.9rem;">
+                {% if execution_logs %}
+                    {% for log in execution_logs %}
+                    <div class="log-entry log-{{ log.log_type }}" style="margin-bottom: 8px; padding: 8px; background: {% if log.log_type == 'error' %}#fee{% elif log.log_type == 'warning' %}#fff3cd{% elif log.log_type == 'trade' %}#d4edda{% else %}#fff{% endif %}; border-radius: 4px; border-left: 4px solid {% if log.log_type == 'error' %}#dc3545{% elif log.log_type == 'warning' %}#ffc107{% elif log.log_type == 'trade' %}#28a745{% else %}#007bff{% endif %};">
+                        <span style="color: #6c757d; font-size: 0.85rem;">{{ log.timestamp }}</span>
+                        {% if log.symbol %}<span style="font-weight: bold; color: #495057;">[{{ log.symbol }}]</span>{% endif %}
+                        <span style="color: {% if log.log_type == 'error' %}#dc3545{% elif log.log_type == 'warning' %}#856404{% elif log.log_type == 'trade' %}#155724{% else %}#004085{% endif %};">{{ log.message }}</span>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div style="color: #999; text-align: center;">실행 로그가 없습니다</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- 거래 내역 -->
+        <div class="trade-history">
+            <h3 class="info-title">거래 내역</h3>
+            <table class="position-table">
+                <thead>
+                    <tr>
+                        <th>일시</th>
+                        <th>종목</th>
+                        <th>방향</th>
+                        <th>진입가</th>
+                        <th>청산가</th>
+                        <th>수량</th>
+                        <th>손익</th>
+                        <th>상태</th>
+                    </tr>
+                </thead>
+                <tbody id="tradeHistoryBody">
+                    {% if trades %}
+                        {% for trade in trades %}
+                        <tr>
+                            <td>{{ trade.timestamp|truncate(19, True, '') }}</td>
+                            <td>{{ trade.symbol }}</td>
+                            <td>{{ trade.side }}</td>
+                            <td>{{ '%.2f'|format(trade.entry_price) if trade.entry_price else '-' }}</td>
+                            <td>{{ '%.2f'|format(trade.exit_price) if trade.exit_price else '-' }}</td>
+                            <td>{{ '%.4f'|format(trade.quantity) if trade.quantity else '-' }}</td>
+                            <td class="{% if trade.profit is not none %}{{ 'profit' if trade.profit > 0 else 'loss' }}{% endif %}">
+                                {% if trade.profit is not none %}
+                                    {{ '%.2f'|format(trade.profit) }} USDT
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td style="font-weight: 600; color: {% if trade.status == '청산' %}#e74c3c{% elif trade.status == '진입' %}#2386ff{% else %}#f39c12{% endif %};">{{ trade.status }}</td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="8" style="color: #999;">거래 내역 없음</td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- 컨트롤 버튼 -->
+        <div class="control-buttons">
+            <!-- 롱 자동시작/정지 버튼 -->
+            <button class="control-btn" id="longStartBtn" onclick="startTrading('long')">롱자동시작</button>
+            <button class="control-btn" id="longStopBtn" onclick="stopTrading()">롱자동정지</button>
+            
+            <!-- 숏 자동시작/정지 버튼 -->
+            <button class="control-btn" id="shortStartBtn" onclick="startTrading('short')">숏자동시작</button>
+            <button class="control-btn" id="shortStopBtn" onclick="stopTrading()">숏자동정지</button>
+            
+            <button class="control-btn btn-nav" onclick="location.href='/profit'">손익내역</button>
+            <button class="control-btn btn-nav" onclick="location.href='/setting?symbol=' + currentSymbol">세팅설정</button>
+            <button class="control-btn btn-nav" onclick="logout()">로그아웃</button>
+        </div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script>
+        // 전역 변수
+        let currentSymbol = '{{ settings.symbol or "BTCUSDT" }}';
+        let socket = null;
+        let tvWidget = null;
+        let updateInterval = null;
+        const isTrading = {{ is_trading|tojson }};
+        const hasBtcLongSettings = {{ has_btc_long_settings|tojson }};
+        const hasBtcShortSettings = {{ has_btc_short_settings|tojson }};
+        const hasEthLongSettings = {{ has_eth_long_settings|tojson }};
+        const hasEthShortSettings = {{ has_eth_short_settings|tojson }};
+        
+        // 디버깅 정보
+        console.log('Current Symbol:', currentSymbol);
+        console.log('Is Trading:', isTrading);
+        console.log('BTC Long Settings:', hasBtcLongSettings);
+        console.log('BTC Short Settings:', hasBtcShortSettings);
+        console.log('ETH Long Settings:', hasEthLongSettings);
+        console.log('ETH Short Settings:', hasEthShortSettings);
+        
+        // 버튼 상태 업데이트
+        function updateButtonStates() {
+            const longStartBtn = document.getElementById('longStartBtn');
+            const longStopBtn = document.getElementById('longStopBtn');
+            const shortStartBtn = document.getElementById('shortStartBtn');
+            const shortStopBtn = document.getElementById('shortStopBtn');
+            
+            let hasLongSettings = false;
+            let hasShortSettings = false;
+            
+            if (currentSymbol === 'BTCUSDT') {
+                hasLongSettings = hasBtcLongSettings;
+                hasShortSettings = hasBtcShortSettings;
+            } else {
+                hasLongSettings = hasEthLongSettings;
+                hasShortSettings = hasEthShortSettings;
+            }
+            
+            // 롱 버튼 상태
+            if (isTrading) {
+                longStartBtn.disabled = true;
+                longStartBtn.className = 'control-btn btn-inactive btn-disabled';
+                longStopBtn.disabled = false;
+                longStopBtn.className = 'control-btn btn-active';
+            } else {
+                longStartBtn.disabled = !hasLongSettings;
+                longStartBtn.className = hasLongSettings ? 'control-btn btn-active' : 'control-btn btn-inactive btn-disabled';
+                longStartBtn.title = hasLongSettings ? '' : '설정을 먼저 저장해주세요';
+                longStopBtn.disabled = true;
+                longStopBtn.className = 'control-btn btn-inactive btn-disabled';
+            }
+            
+            // 숏 버튼 상태
+            if (isTrading) {
+                shortStartBtn.disabled = true;
+                shortStartBtn.className = 'control-btn btn-inactive btn-disabled';
+                shortStopBtn.disabled = false;
+                shortStopBtn.className = 'control-btn btn-active';
+            } else {
+                shortStartBtn.disabled = !hasShortSettings;
+                shortStartBtn.className = hasShortSettings ? 'control-btn btn-active' : 'control-btn btn-inactive btn-disabled';
+                shortStartBtn.title = hasShortSettings ? '' : '설정을 먼저 저장해주세요';
+                shortStopBtn.disabled = true;
+                shortStopBtn.className = 'control-btn btn-inactive btn-disabled';
+            }
+        }
+
+        // WebSocket 연결
+        function connectWebSocket() {
+            socket = io();
+            
+            socket.on('connect', function() {
+                console.log('WebSocket 연결됨');
+                // 실시간 업데이트 요청
+                requestUpdate();
+            });
+            
+            socket.on('data_update', function(data) {
+                // 잔고 및 포지션 업데이트
+                updatePositionTable(data.positions);
+                
+                // 실행로그 업데이트
+                if (data.execution_logs) {
+                    updateExecutionLogs(data.execution_logs);
+                }
+            });
+            
+            socket.on('execution_log', function(log) {
+                // 실시간 로그 추가
+                addExecutionLog(log);
+            });
+            
+            socket.on('admin_stopped', function(data) {
+                // 관리자에 의한 중단
+                document.getElementById('adminWarning').style.display = 'block';
+                alert(data.message);
+                if (data.force_logout) {
+                    setTimeout(() => {
+                        window.location.href = '/logout';
+                    }, 2000);
+                }
+            });
+            
+            socket.on('trading_status', function(data) {
+                console.log('거래 상태:', data.status);
+                // 페이지 새로고침하여 버튼 상태 업데이트
+                if (data.status === 'started' || data.status === 'stopped') {
+                    location.reload();
+                }
+            });
+        }
+
+        // 실시간 데이터 요청
+        function requestUpdate() {
+            if (socket && socket.connected) {
+                socket.emit('request_update');
+            }
+        }
+
+        // TradingView 차트 초기화
+        function initTradingView() {
+            if (tvWidget) {
+                tvWidget.remove();
+            }
+            
+            const chartContainer = document.getElementById('chartContainer');
+            const chartHeight = chartContainer.offsetHeight - 20; // 리사이즈 핸들 높이 제외
+            
+            tvWidget = new TradingView.widget({
+                "width": "100%",
+                "height": chartHeight,
+                "symbol": "BINANCE:" + currentSymbol,
+                "interval": "5",
+                "timezone": "Asia/Seoul",
+                "theme": "light",
+                "style": "1",
+                "locale": "kr",
+                "toolbar_bg": "#f1f3f6",
+                "enable_publishing": false,
+                "allow_symbol_change": false,
+                "container_id": "tradingview_chart",
+                "hide_side_toolbar": false,
+                "studies": [
+                    "MASimple@tv-basicstudies"
+                ],
+                "save_image": false,
+                "hide_top_toolbar": false,
+                "hide_legend": false
+            });
+        }
+
+        // 포지션 테이블 업데이트
+        function updatePositionTable(positions) {
+            const tbody = document.getElementById('positionTableBody');
+            tbody.innerHTML = '';
+            
+            if (!positions || positions.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" style="color: #999;">포지션 없음</td></tr>';
+                return;
+            }
+            
+            positions.forEach(pos => {
+                const row = tbody.insertRow();
+                const pnlClass = pos.pnl >= 0 ? 'profit' : 'loss';
+                const pnlRateClass = pos.pnl_rate >= 0 ? 'profit' : 'loss';
+                
+                row.innerHTML = `
+                    <td>${pos.symbol}</td>
+                    <td>${pos.side === 'LONG' ? '롱' : '숏'}</td>
+                    <td>${pos.entry_price}</td>
+                    <td>${pos.entry_price}</td>
+                    <td>${pos.size}</td>
+                    <td>${pos.side}</td>
+                    <td class="${pnlClass}">${pos.pnl.toFixed(2)} USDT</td>
+                    <td class="${pnlRateClass}">${pos.pnl_rate.toFixed(2)}%</td>
+                `;
+            });
+        }
+        
+        // 실행로그 업데이트
+        function updateExecutionLogs(logs) {
+            const logsDiv = document.getElementById('executionLogs');
+            if (!logs || logs.length === 0) {
+                logsDiv.innerHTML = '<div style="color: #999; text-align: center;">실행 로그가 없습니다</div>';
+                return;
+            }
+            
+            logsDiv.innerHTML = '';
+            logs.forEach(log => {
+                addExecutionLogToDiv(log);
+            });
+            logsDiv.scrollTop = logsDiv.scrollHeight;
+        }
+        
+        // 실행로그 추가
+        function addExecutionLog(log) {
+            const logsDiv = document.getElementById('executionLogs');
+            if (logsDiv.innerHTML.includes('실행 로그가 없습니다')) {
+                logsDiv.innerHTML = '';
+            }
+            addExecutionLogToDiv(log);
+            logsDiv.scrollTop = logsDiv.scrollHeight;
+        }
+        
+        // 로그 엔트리 추가
+        function addExecutionLogToDiv(log) {
+            const logsDiv = document.getElementById('executionLogs');
+            const logEntry = document.createElement('div');
+            logEntry.className = `log-entry log-${log.log_type}`;
+            
+            const bgColor = {
+                'error': '#fee',
+                'warning': '#fff3cd',
+                'trade': '#d4edda',
+                'info': '#fff'
+            }[log.log_type] || '#fff';
+            
+            const borderColor = {
+                'error': '#dc3545',
+                'warning': '#ffc107',
+                'trade': '#28a745',
+                'info': '#007bff'
+            }[log.log_type] || '#007bff';
+            
+            const textColor = {
+                'error': '#dc3545',
+                'warning': '#856404',
+                'trade': '#155724',
+                'info': '#004085'
+            }[log.log_type] || '#004085';
+            
+            logEntry.style.cssText = `margin-bottom: 8px; padding: 8px; background: ${bgColor}; border-radius: 4px; border-left: 4px solid ${borderColor};`;
+            
+            const timestamp = new Date(log.timestamp).toLocaleString('ko-KR');
+            logEntry.innerHTML = `
+                <span style="color: #6c757d; font-size: 0.85rem;">${timestamp}</span>
+                ${log.symbol ? `<span style="font-weight: bold; color: #495057;">[${log.symbol}]</span>` : ''}
+                <span style="color: ${textColor};">${log.message}</span>
+            `;
+            
+            logsDiv.appendChild(logEntry);
+        }
+
+        // 거래 시작
+        async function startTrading(side) {
+            const symbolName = currentSymbol === 'BTCUSDT' ? '비트코인' : '이더리움';
+            const sideName = side === 'long' ? '롱' : '숏';
+            
+            if (!confirm(`${symbolName} ${sideName} 자동매매를 시작하시겠습니까?`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/trade', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        side: side,
+                        symbol: currentSymbol
+                    })
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    alert(result.message);
+                    location.reload();
+                } else {
+                    alert('오류: ' + result.message);
+                }
+            } catch (error) {
+                alert('요청 중 오류가 발생했습니다.');
+                console.error(error);
+            }
+        }
+
+        // 거래 중지
+        async function stopTrading() {
+            const symbolName = currentSymbol === 'BTCUSDT' ? '비트코인' : '이더리움';
+            
+            if (!confirm(`${symbolName} 자동매매를 중지하시겠습니까?`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/stop', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({})
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    alert(result.message);
+                    location.reload();
+                } else {
+                    alert('오류: ' + result.message);
+                }
+            } catch (error) {
+                alert('요청 중 오류가 발생했습니다.');
+                console.error(error);
+            }
+        }
+
+        // 로그아웃
+        function logout() {
+            let warningMsg = '로그아웃 하시겠습니까?';
+            
+            // 자동매매 중인지 확인
+            const isTradingActive = {{ is_trading|tojson }};
+            if (isTradingActive) {
+                warningMsg = '자동매매가 진행 중입니다.\n로그아웃하면 자동매매가 중지됩니다.\n\n정말 로그아웃 하시겠습니까?';
+            }
+            
+            if (confirm(warningMsg)) {
+                window.location.href = '/logout';
+            }
+        }
+
+        // 코인 선택
+        document.querySelectorAll('.coin-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const symbol = this.dataset.symbol;
+                if (symbol !== currentSymbol) {
+                    currentSymbol = symbol;
+                    
+                    // 버튼 활성화 상태 변경
+                    document.querySelectorAll('.coin-btn').forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+                    
+                    // TradingView 차트 업데이트
+                    initTradingView();
+                    
+                    // 버튼 상태 업데이트
+                    updateButtonStates();
+                }
+            });
+        });
+
+        // 차트 리사이즈 기능
+        function initChartResize() {
+            const chartContainer = document.getElementById('chartContainer');
+            const resizeHandle = document.getElementById('resizeHandle');
+            let isResizing = false;
+            let startY = 0;
+            let startHeight = 0;
+            
+            // 저장된 높이가 있으면 적용
+            const savedHeight = localStorage.getItem('chartHeight');
+            if (savedHeight) {
+                chartContainer.style.height = savedHeight + 'px';
+            }
+            
+            resizeHandle.addEventListener('mousedown', (e) => {
+                isResizing = true;
+                startY = e.clientY;
+                startHeight = chartContainer.offsetHeight;
+                document.body.style.cursor = 'ns-resize';
+                e.preventDefault();
+            });
+            
+            document.addEventListener('mousemove', (e) => {
+                if (!isResizing) return;
+                
+                const deltaY = e.clientY - startY;
+                const newHeight = Math.max(400, Math.min(1200, startHeight + deltaY));
+                chartContainer.style.height = newHeight + 'px';
+            });
+            
+            document.addEventListener('mouseup', () => {
+                if (isResizing) {
+                    isResizing = false;
+                    document.body.style.cursor = '';
+                    
+                    // 높이 저장
+                    const currentHeight = chartContainer.offsetHeight;
+                    localStorage.setItem('chartHeight', currentHeight);
+                    
+                    // TradingView 차트 다시 초기화
+                    initTradingView();
+                }
+            });
+        }
+
+        // 페이지 로드 시 초기화
+        document.addEventListener('DOMContentLoaded', function() {
+            // 오늘 날짜 설정
+            const today = new Date().toISOString().split('T')[0];
+            if (!document.getElementById('endDate').value) {
+                document.getElementById('endDate').value = today;
+            }
+            
+            // 일주일 전 날짜 설정
+            const weekAgo = new Date();
+            weekAgo.setDate(weekAgo.getDate() - 7);
+            if (!document.getElementById('startDate').value) {
+                document.getElementById('startDate').value = weekAgo.toISOString().split('T')[0];
+            }
+            
+            // 차트 리사이즈 기능 초기화
+            initChartResize();
+            
+            // TradingView 차트 초기화
+            initTradingView();
+            
+            // 버튼 상태 초기화
+            updateButtonStates();
+            
+            // WebSocket 연결
+            connectWebSocket();
+            
+            // 5초마다 업데이트
+            updateInterval = setInterval(requestUpdate, 5000);
+        });
+
+        // 페이지 언로드 시 정리
+        window.addEventListener('beforeunload', function() {
+            if (updateInterval) {
+                clearInterval(updateInterval);
+            }
+            if (socket) {
+                socket.disconnect();
+            }
+        });
+    </script>
+</body>
+</html>
