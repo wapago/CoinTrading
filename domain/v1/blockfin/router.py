@@ -12,6 +12,7 @@ import json
 
 from urllib.parse import urlencode
 
+from config.models.blockfin import BlockFinTrade, BlockFinLeverage
 from config.config import BLOCKFIN_BASE_URL, BLOCKFIN_WS_BASE_URL, BLOCKFIN_API_KEY, BLOCKFIN_API_SECRET, BLOCKFIN_API_PASSPHRASE
 
 router = APIRouter(
@@ -32,15 +33,22 @@ def auth_headers(signature: str, timestamp: str, nonce: str) -> dict:
     }
 
 
-def generate_signature(method: str, request_path: str, query_params: str, body: dict = None) -> str:
+def generate_signature(method: str, request_path: str, query_params: str = None, body: dict = None) -> str:
     timestamp = str(int(time.time() * 1000))
     nonce = str(uuid.uuid4())
-    query_string = urlencode(query_params)
+
+    query_string = ""
+    if query_params:
+        query_string = urlencode(query_params)
+
     body_str = ""
     if body is not None and len(body) > 0:
-        body_str = json.dumps(body, separators=(",", ":"))
+        body_str = json.dumps(body, separators=(", ", ": "))
 
-    pre_hash = f"{request_path}?{query_string}{method}{timestamp}{nonce}{body_str}"
+    if query_params:
+        pre_hash = f"{request_path}?{query_string}{method}{timestamp}{nonce}{body_str}"
+    else:
+        pre_hash = f"{request_path}{method}{timestamp}{nonce}{body_str}"
 
     hex_signature = hmac.new(
         BLOCKFIN_API_SECRET.encode(),
@@ -52,10 +60,11 @@ def generate_signature(method: str, request_path: str, query_params: str, body: 
 
     return timestamp, nonce, query_string, signature
 
+
 @router.get('/user/spot/asset')
 async def user_spot_asset():
     query_params = {
-        "accountType": "funding"
+        "accountType": "futures"
     }
     request_path = '/api/v1/asset/balances'
     timestamp, nonce, query_string, signature = generate_signature(method='GET', request_path=request_path, query_params=query_params)
@@ -105,7 +114,118 @@ async def get_symbols(inst_id: str = None):
     return response_json
 
 
+@router.get('/affiliates')
+async def get_affiliates():
+    request_path = '/api/v1/affiliate/basic'
+
+    timestamp, nonce, query_string, signature = generate_signature(method='GET', request_path=request_path)
+
+    headers = auth_headers(signature, timestamp, nonce)
+
+    response_json = requests.get(url=f"{BLOCKFIN_BASE_URL}{request_path}", headers=headers).json()
+    print(response_json)  # {"code": "80006", "msg": "non exist affiliate" }
+
+    return response_json
+
+
+@router.post('/future/trade')
+async def future_trade(trade_model: BlockFinTrade):
+    # # set long_short_mode
+    position_mode_request_path = '/api/v1/account/set-position-mode'
+    body = {
+        "positionMode": trade_model.position_mode
+    }
+    timestamp, nonce, query_string, signature = generate_signature(method='POST', request_path=position_mode_request_path, query_params=None, body=body)
+    headers = auth_headers(signature, timestamp, nonce)
+    position_mode_response_json = requests.post(f"{BLOCKFIN_BASE_URL}{position_mode_request_path}", headers=headers, json=body).json()
+    print(position_mode_response_json)
+
+    # set margin_mode
+    margin_mode_request_path = '/api/v1/account/set-margin-mode'
+    body = {
+        "marginMode": trade_model.margin_mode
+    }
+    timestamp, nonce, query_string, signature = generate_signature(method='POST', request_path=margin_mode_request_path, query_params=None, body=body)
+    headers = auth_headers(signature, timestamp, nonce)
+    margin_mode_response_json = requests.post(url=f"{BLOCKFIN_BASE_URL}{margin_mode_request_path}", headers=headers, json=body).json()
+    print(margin_mode_response_json)
+
+    # set leverage
+    leverage_request_path = '/api/v1/account/set-leverage'
+    body = {
+        "instId": trade_model.inst_id,
+        "leverage": trade_model.leverage ,
+        "marginMode": trade_model.margin_mode,
+        "positionSide": trade_model.position_side
+    }
+    timestamp, nonce, query_string, signature = generate_signature(method='POST', request_path=leverage_request_path, query_params=None, body=body)
+    headers = auth_headers(signature, timestamp, nonce)
+    leverage_response_json = requests.post(url=f"{BLOCKFIN_BASE_URL}{leverage_request_path}", headers=headers, json=body).json()
+    print(leverage_response_json)
+
+    # place order
+    request_path = '/api/v1/trade/order'
+    body = {
+        "instId": trade_model.inst_id,
+        "marginMode": trade_model.margin_mode,
+        "positionSide": trade_model.position_side,
+        "side": trade_model.side,
+        "orderType": trade_model.order_type,
+        "price": trade_model.price,
+        "size": str(trade_model.size / 1000) #: contractval,
+    }
+
+    timestamp, nonce, query_string, signature = generate_signature(method='POST', request_path=request_path, query_params=None, body=body)
+
+    headers = auth_headers(signature, timestamp, nonce)
+
+    print(f"timestamp: {timestamp}")
+    print(f"{BLOCKFIN_BASE_URL}{request_path}")
+    print(f"body: {body}")
+
+    response_json = requests.post(url=f"{BLOCKFIN_BASE_URL}{request_path}", headers=headers, json=body).json()
+
+    print(f"응답: {response_json}")
+
+    return response_json
+
+
+@router.post('/future/position-mode')
+async def set_position_mode(postion_mode: str):
+    request_path = '/api/v1/account/set-position-mode'
+    body = { "positionMode": postion_mode }
+    timestamp, nonce, query_string, signature = generate_signature(method='POST', request_path=request_path, query_params=None, body=body)
+    headers = auth_headers(signature, timestamp, nonce)
+    response_json = requests.post(f"{BLOCKFIN_BASE_URL}{request_path}", headers=headers, json=body).json()
+    print(response_json)
+    return response_json
+
+
+@router.post('/set-leverage')
+async def set_leverage(leverage_model: BlockFinLeverage):
+    request_path = '/api/v1/account/set-leverage'
+    body = {
+        "instId": leverage_model.inst_id,
+        "leverage": leverage_model.leverage,
+        "marginMode": leverage_model.margin_mode,
+        "positionSide": leverage_model.position_side
+    }
+    timestamp, nonce, query_string, signature = generate_signature(method='POST', request_path=request_path, query_params=None, body=body)
+    headers = auth_headers(signature, timestamp, nonce)
+    response_json = requests.post(f"{BLOCKFIN_BASE_URL}{request_path}", headers=headers, json=body).json()
+    print(response_json)
+
+
+@router.post('/get_position_mode')
+async def get_position_mode():
+    request_path = '/api/v1/account/position-mode'
+    timestamp, nonce, query_string, signature = generate_signature(method='GET', request_path=request_path)
+    headers = auth_headers(signature, timestamp, nonce)
+    response_json = requests.get(f"{BLOCKFIN_BASE_URL}{request_path}", headers=headers).json()
+    print(response_json)
+
+
+
 # TODO: GET Futures Account Balance --> GET /api/v1/account/balance --> https://docs.blockfin.com/index.html#get-futures-account-balance
 # TODO: Place Order --> POST /api/v1/trade/order --> https://docs.blockfin.com/index.html#place-order
 # TODO: Set Leverage --> POST /api/v1/account/set-leverage --> https://docs.blockfin.com/index.html#get-futures-account-balance
-# TODO: GET Futures Account Balance --> GET /api/v1/account/balance --> https://docs.blockfin.com/index.html#get-futures-account-balance

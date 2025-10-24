@@ -65,7 +65,7 @@ def generate_signature(server_time: str, method: str, request_path: str,
 
 
 # 전체 심볼 조회
-@router.get('/spot/public/symbols')
+@router.get('/symbols')
 async def spot_symbols():
     response = requests.get(url=BITGET_BASE_URL + '/spot/public/symbols')
     return response.json()
