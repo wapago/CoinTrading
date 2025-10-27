@@ -114,6 +114,32 @@ async def get_symbols(inst_id: str = None):
     return response_json
 
 
+@router.websocket('/ws/future/currency')
+async def get_future_currency(websocket: WebSocket):
+    await websocket.accept()
+    async with websockets.connect(BLOCKFIN_WS_BASE_URL, ping_interval=30, ping_timeout=10) as blockfin_ws:
+        subscribe_msg = {
+            "op": "subscribe",
+            "args": [
+                {
+                    "channel": "trades",
+                    "instId": "BTC-USDT"
+                }
+            ]
+        }
+        await blockfin_ws.send(json.dumps(subscribe_msg))
+
+        try:
+            while True:
+                msg = await blockfin_ws.recv()
+                print(msg)
+                await websocket.send_text(msg)
+        except websockets.exceptions.ConnectionClosed as e:
+            print(f"BLOCKFIN WS 연결 종료: {e}")
+        finally:
+            await websocket.close()
+
+
 @router.get('/affiliates')
 async def get_affiliates():
     request_path = '/api/v1/affiliate/basic'
@@ -130,7 +156,7 @@ async def get_affiliates():
 
 @router.post('/future/trade')
 async def future_trade(trade_model: BlockFinTrade):
-    # # set long_short_mode
+    # set position mode(one-way or hedge) 'net_mode' / 'long_short_mode'
     position_mode_request_path = '/api/v1/account/set-position-mode'
     body = {
         "positionMode": trade_model.position_mode
@@ -138,9 +164,9 @@ async def future_trade(trade_model: BlockFinTrade):
     timestamp, nonce, query_string, signature = generate_signature(method='POST', request_path=position_mode_request_path, query_params=None, body=body)
     headers = auth_headers(signature, timestamp, nonce)
     position_mode_response_json = requests.post(f"{BLOCKFIN_BASE_URL}{position_mode_request_path}", headers=headers, json=body).json()
-    print(position_mode_response_json)
+    print(f"position_mode 응답: {position_mode_response_json}")
 
-    # set margin_mode
+    # set margin_mode 'cross' / 'isolated'
     margin_mode_request_path = '/api/v1/account/set-margin-mode'
     body = {
         "marginMode": trade_model.margin_mode
@@ -148,23 +174,24 @@ async def future_trade(trade_model: BlockFinTrade):
     timestamp, nonce, query_string, signature = generate_signature(method='POST', request_path=margin_mode_request_path, query_params=None, body=body)
     headers = auth_headers(signature, timestamp, nonce)
     margin_mode_response_json = requests.post(url=f"{BLOCKFIN_BASE_URL}{margin_mode_request_path}", headers=headers, json=body).json()
-    print(margin_mode_response_json)
+    print(f"margin_mode_response_json 응답: {margin_mode_response_json}")
 
     # set leverage
     leverage_request_path = '/api/v1/account/set-leverage'
     body = {
         "instId": trade_model.inst_id,
-        "leverage": trade_model.leverage ,
+        "leverage": trade_model.leverage,
         "marginMode": trade_model.margin_mode,
         "positionSide": trade_model.position_side
     }
     timestamp, nonce, query_string, signature = generate_signature(method='POST', request_path=leverage_request_path, query_params=None, body=body)
     headers = auth_headers(signature, timestamp, nonce)
     leverage_response_json = requests.post(url=f"{BLOCKFIN_BASE_URL}{leverage_request_path}", headers=headers, json=body).json()
-    print(leverage_response_json)
+    # print(f"leverage_response_json 응답: {leverage_response_json}")
 
     # place order
     request_path = '/api/v1/trade/order'
+    print(f"입력 size: {trade_model.size}")
     body = {
         "instId": trade_model.inst_id,
         "marginMode": trade_model.margin_mode,
@@ -172,7 +199,7 @@ async def future_trade(trade_model: BlockFinTrade):
         "side": trade_model.side,
         "orderType": trade_model.order_type,
         "price": trade_model.price,
-        "size": str(trade_model.size / 1000) #: contractval,
+        "size": str(trade_model.size / 0.001) #: contractval,
     }
 
     timestamp, nonce, query_string, signature = generate_signature(method='POST', request_path=request_path, query_params=None, body=body)
