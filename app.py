@@ -5,8 +5,8 @@ from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 
 from domain.v1 import binance, bitget, blockfin
-from domain.v1.blockfin.router import generate_signature, auth_headers, BLOCKFIN_BASE_URL
-from config import static_path, symbol_obj, SYMBOL_LIST
+from domain.v1.blockfin.router import generate_signature, auth_headers
+from config import static_path, symbol_obj, BLOCKFIN_BASE_URL, SYMBOL_LIST
 
 
 def set_symbols(symbol_list: list):
