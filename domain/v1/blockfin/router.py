@@ -1,7 +1,7 @@
 import asyncio
 
 import websockets
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
 from collections import OrderedDict
 
 import aiohttp
@@ -13,14 +13,13 @@ import json
 from urllib.parse import urlencode
 
 from config.models.blockfin import BlockFinTrade, BlockFinLeverage
-from config.config import BLOCKFIN_BASE_URL, BLOCKFIN_WS_BASE_URL, BLOCKFIN_API_KEY, BLOCKFIN_API_SECRET, BLOCKFIN_API_PASSPHRASE
+from config.config import BLOCKFIN_BASE_URL, BLOCKFIN_WS_BASE_URL, BLOCKFIN_API_KEY, BLOCKFIN_API_SECRET, BLOCKFIN_API_PASSPHRASE, symbol_obj
 
 router = APIRouter(
     prefix='/api/v1/blockfin',
     tags=['Blockfin'],
     include_in_schema=True,
 )
-
 
 
 def auth_headers(signature: str, timestamp: str, nonce: str) -> dict:
@@ -109,7 +108,6 @@ async def get_symbols(inst_id: str = None):
     headers = auth_headers(signature, timestamp, nonce)
 
     response_json = requests.get(url=f"{BLOCKFIN_BASE_URL}{request_path}?{query_string}", headers=headers).json()
-    print(response_json)  # {'code': '0', 'msg': 'success', 'data': [{'instId': 'BTC-USDT', 'baseCurrency': 'BTC', 'quoteCurrency': 'USDT', 'contractValue': '0.001', 'listTime': '1673517600000', 'expireTime': '2521900800000', 'maxLeverage': '150', 'minSize': '0.1', 'lotSize': '0.1', 'tickSize': '0.1', 'instType': 'SWAP', 'contractType': 'linear', 'maxLimitSize': '210000', 'maxMarketSize': '100000', 'state': 'live', 'contractValueMultiplier': '0.1', 'settleCurrency': 'USDT'}]}
 
     return response_json
 
@@ -153,14 +151,25 @@ async def get_affiliates():
 
     return response_json
 
-
+# TODO: 부분청산
 @router.post('/future/trade')
 async def future_trade(trade_model: BlockFinTrade):
+    # validate size
+    inst_id = trade_model.inst_id.upper()
+    input_size = trade_model.size
+    contract_value = float(symbol_obj[inst_id]['data'][0]['contractValue'])
+    lot_size = float(symbol_obj[inst_id]['data'][0]['lotSize'])
+
+    if input_size / contract_value < lot_size:
+        raise HTTPException(status_code=400, detail="Requested size is Too Small")
+
+    req_size = str(input_size / contract_value)
+    print(req_size)
+    print(lot_size)
+
     # set position mode(one-way or hedge) 'net_mode' / 'long_short_mode'
     position_mode_request_path = '/api/v1/account/set-position-mode'
-    body = {
-        "positionMode": trade_model.position_mode
-    }
+    body = dict(positionMode=trade_model.position_mode)
     timestamp, nonce, query_string, signature = generate_signature(method='POST', request_path=position_mode_request_path, query_params=None, body=body)
     headers = auth_headers(signature, timestamp, nonce)
     position_mode_response_json = requests.post(f"{BLOCKFIN_BASE_URL}{position_mode_request_path}", headers=headers, json=body).json()
@@ -168,9 +177,7 @@ async def future_trade(trade_model: BlockFinTrade):
 
     # set margin_mode 'cross' / 'isolated'
     margin_mode_request_path = '/api/v1/account/set-margin-mode'
-    body = {
-        "marginMode": trade_model.margin_mode
-    }
+    body = dict(marginMode=trade_model.margin_mode)
     timestamp, nonce, query_string, signature = generate_signature(method='POST', request_path=margin_mode_request_path, query_params=None, body=body)
     headers = auth_headers(signature, timestamp, nonce)
     margin_mode_response_json = requests.post(url=f"{BLOCKFIN_BASE_URL}{margin_mode_request_path}", headers=headers, json=body).json()
@@ -178,29 +185,17 @@ async def future_trade(trade_model: BlockFinTrade):
 
     # set leverage
     leverage_request_path = '/api/v1/account/set-leverage'
-    body = {
-        "instId": trade_model.inst_id,
-        "leverage": trade_model.leverage,
-        "marginMode": trade_model.margin_mode,
-        "positionSide": trade_model.position_side
-    }
+    body = dict(instId=inst_id, leverage=trade_model.leverage, marginMode=trade_model.margin_mode, positionSide=trade_model.position_side)
     timestamp, nonce, query_string, signature = generate_signature(method='POST', request_path=leverage_request_path, query_params=None, body=body)
     headers = auth_headers(signature, timestamp, nonce)
     leverage_response_json = requests.post(url=f"{BLOCKFIN_BASE_URL}{leverage_request_path}", headers=headers, json=body).json()
-    # print(f"leverage_response_json 응답: {leverage_response_json}")
+    print(f"leverage_response_json 응답: {leverage_response_json}")
 
     # place order
     request_path = '/api/v1/trade/order'
     print(f"입력 size: {trade_model.size}")
-    body = {
-        "instId": trade_model.inst_id,
-        "marginMode": trade_model.margin_mode,
-        "positionSide": trade_model.position_side,
-        "side": trade_model.side,
-        "orderType": trade_model.order_type,
-        "price": trade_model.price,
-        "size": str(trade_model.size / 0.001) #: contractval,
-    }
+    body = dict(instId=inst_id, marginMode=trade_model.margin_mode, positionSide=trade_model.position_side, side=trade_model.side,
+                orderType=trade_model.order_type, price=trade_model.price, size=req_size)
 
     timestamp, nonce, query_string, signature = generate_signature(method='POST', request_path=request_path, query_params=None, body=body)
 
@@ -254,5 +249,3 @@ async def get_position_mode():
 
 
 # TODO: GET Futures Account Balance --> GET /api/v1/account/balance --> https://docs.blockfin.com/index.html#get-futures-account-balance
-# TODO: Place Order --> POST /api/v1/trade/order --> https://docs.blockfin.com/index.html#place-order
-# TODO: Set Leverage --> POST /api/v1/account/set-leverage --> https://docs.blockfin.com/index.html#get-futures-account-balance
