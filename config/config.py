@@ -9,6 +9,7 @@ templates_path = os.path.join(root, 'templates')
 
 load_dotenv(os.path.join(file, 'config.env'))
 
+symbol_obj = {}
 
 BINANCE_API_KEY = os.getenv('BINANCE_API_KEY')
 BINANCE_API_SECRET = os.getenv('BINANCE_API_SECRET')
@@ -30,3 +31,5 @@ BLOCKFIN_API_SECRET = os.getenv('BLOCKFIN_API_SECRET')
 BLOCKFIN_API_PASSPHRASE = os.getenv('BLOCKFIN_API_PASSPHRASE')
 BLOCKFIN_BASE_URL = os.getenv('BLOCKFIN_BASE_URL')
 BLOCKFIN_WS_BASE_URL = os.getenv('BLOCKFIN_WS_BASE_URL')
+
+SYMBOL_LIST = os.getenv('SYMBOL_LIST', "").split("/")
