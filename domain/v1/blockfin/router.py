@@ -112,6 +112,7 @@ async def get_symbols(inst_id: str = None):
     return response_json
 
 
+# TODO: FUTURE 밸런스 체크
 @router.websocket('/ws/future/currency')
 async def get_future_currency(websocket: WebSocket):
     await websocket.accept()
