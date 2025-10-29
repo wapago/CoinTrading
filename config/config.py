@@ -4,8 +4,6 @@ from dotenv import load_dotenv
 
 root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 file = os.path.join(root, 'config')
-static_path = os.path.join(root, 'static')
-templates_path = os.path.join(root, 'templates')
 
 load_dotenv(os.path.join(file, 'config.env'))
 
@@ -31,5 +29,6 @@ BLOCKFIN_API_SECRET = os.getenv('BLOCKFIN_API_SECRET')
 BLOCKFIN_API_PASSPHRASE = os.getenv('BLOCKFIN_API_PASSPHRASE')
 BLOCKFIN_BASE_URL = os.getenv('BLOCKFIN_BASE_URL')
 BLOCKFIN_WS_BASE_URL = os.getenv('BLOCKFIN_WS_BASE_URL')
+BLOCKFIN_WS_PRIVATE_URL = os.getenv('BLOCKFIN_WS_PRIVATE_URL')
 
 SYMBOL_LIST = os.getenv('SYMBOL_LIST', "").split("/")
