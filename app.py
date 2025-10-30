@@ -29,7 +29,7 @@ def set_symbols(symbol_list: list):
 
 
 @asynccontextmanager
-async def set_symbols(_app: FastAPI):
+async def lifespan(_app: FastAPI):
     symbol_obj.update(set_symbols(SYMBOL_LIST))
     yield
     print("=========== SERVER SHUTDOWN ===========")
@@ -38,7 +38,7 @@ async def set_symbols(_app: FastAPI):
 app = FastAPI(
     title='CoinTrading_test',
     version='0.0.1',
-    lifespan=set_symbols
+    lifespan=lifespan
 )
 app.add_middleware(SessionMiddleware, secret_key=secret_key, max_age=session_max_age, same_site="strict")
 app.add_middleware(

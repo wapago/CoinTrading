@@ -1,10 +1,10 @@
 import asyncio
+from typing import Annotated
 
 import websockets
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
-from collections import OrderedDict
 
-import aiohttp
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Form, HTTPException
+
 import time
 import requests
 import uuid, hmac, hashlib, base64
@@ -12,8 +12,9 @@ import json
 
 from urllib.parse import urlencode
 
-from config.models.blockfin import BlockFinTrade, BlockFinLeverage
-from config.config import BLOCKFIN_BASE_URL, BLOCKFIN_WS_BASE_URL, BLOCKFIN_API_KEY, BLOCKFIN_API_SECRET, BLOCKFIN_API_PASSPHRASE, symbol_obj
+from config.models.blockfin import LoginForm, BlockFinTrade, BlockFinLeverage
+from config.config import (BLOCKFIN_BASE_URL, BLOCKFIN_WS_BASE_URL, BLOCKFIN_API_KEY, BLOCKFIN_API_SECRET,
+                           BLOCKFIN_API_PASSPHRASE, BLOCKFIN_WS_PRIVATE_URL, symbol_obj)
 
 router = APIRouter(
     prefix='/api/v1/blockfin',
@@ -21,8 +22,9 @@ router = APIRouter(
     include_in_schema=True,
 )
 
+register_waiting = {}
 
-def auth_headers(signature: str, timestamp: str, nonce: str) -> dict:
+def set_auth_headers(signature: str, timestamp: str, nonce: str) -> dict:
     return {
         "ACCESS-KEY": BLOCKFIN_API_KEY,
         "ACCESS-SIGN": signature,
@@ -46,8 +48,10 @@ def generate_signature(method: str, request_path: str, query_params: str = None,
 
     if query_params:
         pre_hash = f"{request_path}?{query_string}{method}{timestamp}{nonce}{body_str}"
-    else:
+    elif not query_params and body_str:
         pre_hash = f"{request_path}{method}{timestamp}{nonce}{body_str}"
+    else:
+        pre_hash = f"{request_path}{method}{timestamp}{nonce}"
 
     hex_signature = hmac.new(
         BLOCKFIN_API_SECRET.encode(),
@@ -60,6 +64,65 @@ def generate_signature(method: str, request_path: str, query_params: str = None,
     return timestamp, nonce, query_string, signature
 
 
+@router.post('/validate')
+async def validate_key(login_data: Annotated[LoginForm, Form()]):
+    # 블록핀서버에서 uid, api_key, passphrase 검증
+    request_path = '/api/v1/user/query-apikey'
+    timestamp, nonce, query_string, signature = generate_signature(method='GET', request_path=request_path)
+    headers = {
+        "ACCESS-KEY": login_data.api_key,
+        "ACCESS-SIGN": signature,
+        "ACCESS-TIMESTAMP": timestamp,
+        "ACCESS-NONCE": nonce,
+        "ACCESS-PASSPHRASE": login_data.passphrase
+    }
+    response_json = requests.get(url=f"{BLOCKFIN_BASE_URL}{request_path}?{query_string}", headers=headers).json()
+    uid = response_json['data']['uid']
+
+    return_obj = {}
+
+    if login_data.uid != uid:
+        return_obj['valid'] = False
+
+    if login_data.uid == uid and response_json['msg'] == 'success':
+        return_obj['valid'] = True
+
+    return response_json
+
+
+@router.post('/login')
+async def login(login_data: Annotated[LoginForm, Form()]):
+    # select해서 없으면 insert처리
+    return_obj = dict(success=True, is_validate=True, waiting=False, redirect='http://localhost:5000/main')
+    return return_obj
+
+
+# async def check_approval_loop(uid: str, websocket: WebSocket):
+#     try:
+#         while True:
+#             await asyncio.sleep(2)
+#
+#
+#
+# @router.websocket('/ws/check/approval')
+# async def ws_check_approval(websocket: WebSocket):
+#     await websocket.accept()
+#     uid = None
+#
+#     try:
+#         while True:
+#             msg = await websocket.receive_json()
+#             if msg.get('type') == 'register_waiting':
+#                 uid = msg.get('uid')
+#                 register_waiting.setdefault(uid, set()).add(websocket)
+#                 print(f"계정 승인 대기 등록 uid: {uid}")
+#                 asyncio.create_task(check_approval_loop(uid, websocket))
+#     except WebSocketDisconnect:
+#         if uid and websocket in register_waiting.get(uid, set()):
+#             register_waiting[uid].remove(websocket)
+#             print(f"연결 종료: {uid}")
+
+
 @router.get('/user/spot/asset')
 async def user_spot_asset():
     query_params = {
@@ -68,7 +131,7 @@ async def user_spot_asset():
     request_path = '/api/v1/asset/balances'
     timestamp, nonce, query_string, signature = generate_signature(method='GET', request_path=request_path, query_params=query_params)
 
-    headers = auth_headers(signature, timestamp, nonce)
+    headers = set_auth_headers(signature, timestamp, nonce)
 
     response_json = requests.get(url=f"{BLOCKFIN_BASE_URL}{request_path}?{query_string}", headers=headers).json()
     print(response_json)
@@ -88,10 +151,10 @@ async def get_order_book(inst_id: str = None):
 
     timestamp, nonce, query_string, signature = generate_signature(method='GET', request_path=request_path, query_params=query_params)
 
-    headers = auth_headers(signature, timestamp, nonce)
+    headers = set_auth_headers(signature, timestamp, nonce)
 
     response_json = requests.get(url=f"{BLOCKFIN_BASE_URL}{request_path}?{query_string}", headers=headers).json()
-    print(response_json) # {'code': '0', 'msg': 'success', 'data': [{'asks': [['109476.9', '7344']], 'bids': [['109476.8', '2442']], 'ts': '1761217581477'}]}
+    print(response_json)
 
     return response_json
 
@@ -105,7 +168,7 @@ async def get_symbols(inst_id: str = None):
 
     timestamp, nonce, query_string, signature = generate_signature(method='GET', request_path=request_path, query_params=query_params)
 
-    headers = auth_headers(signature, timestamp, nonce)
+    headers = set_auth_headers(signature, timestamp, nonce)
 
     response_json = requests.get(url=f"{BLOCKFIN_BASE_URL}{request_path}?{query_string}", headers=headers).json()
 
@@ -145,12 +208,13 @@ async def get_affiliates():
 
     timestamp, nonce, query_string, signature = generate_signature(method='GET', request_path=request_path)
 
-    headers = auth_headers(signature, timestamp, nonce)
+    headers = set_auth_headers(signature, timestamp, nonce)
 
     response_json = requests.get(url=f"{BLOCKFIN_BASE_URL}{request_path}", headers=headers).json()
     print(response_json)  # {"code": "80006", "msg": "non exist affiliate" }
 
     return response_json
+
 
 # TODO: 부분청산
 @router.post('/future/trade')
@@ -171,8 +235,9 @@ async def future_trade(trade_model: BlockFinTrade):
     # set position mode(one-way or hedge) 'net_mode' / 'long_short_mode'
     position_mode_request_path = '/api/v1/account/set-position-mode'
     body = dict(positionMode=trade_model.position_mode)
-    timestamp, nonce, query_string, signature = generate_signature(method='POST', request_path=position_mode_request_path, query_params=None, body=body)
-    headers = auth_headers(signature, timestamp, nonce)
+    timestamp, nonce, query_string, signature = generate_signature(method='POST', request_path=position_mode_request_path,
+                                                                   query_params=None, body=body)
+    headers = set_auth_headers(signature, timestamp, nonce)
     position_mode_response_json = requests.post(f"{BLOCKFIN_BASE_URL}{position_mode_request_path}", headers=headers, json=body).json()
     print(f"position_mode 응답: {position_mode_response_json}")
 
@@ -180,7 +245,7 @@ async def future_trade(trade_model: BlockFinTrade):
     margin_mode_request_path = '/api/v1/account/set-margin-mode'
     body = dict(marginMode=trade_model.margin_mode)
     timestamp, nonce, query_string, signature = generate_signature(method='POST', request_path=margin_mode_request_path, query_params=None, body=body)
-    headers = auth_headers(signature, timestamp, nonce)
+    headers = set_auth_headers(signature, timestamp, nonce)
     margin_mode_response_json = requests.post(url=f"{BLOCKFIN_BASE_URL}{margin_mode_request_path}", headers=headers, json=body).json()
     print(f"margin_mode_response_json 응답: {margin_mode_response_json}")
 
@@ -188,7 +253,7 @@ async def future_trade(trade_model: BlockFinTrade):
     leverage_request_path = '/api/v1/account/set-leverage'
     body = dict(instId=inst_id, leverage=trade_model.leverage, marginMode=trade_model.margin_mode, positionSide=trade_model.position_side)
     timestamp, nonce, query_string, signature = generate_signature(method='POST', request_path=leverage_request_path, query_params=None, body=body)
-    headers = auth_headers(signature, timestamp, nonce)
+    headers = set_auth_headers(signature, timestamp, nonce)
     leverage_response_json = requests.post(url=f"{BLOCKFIN_BASE_URL}{leverage_request_path}", headers=headers, json=body).json()
     print(f"leverage_response_json 응답: {leverage_response_json}")
 
@@ -200,7 +265,7 @@ async def future_trade(trade_model: BlockFinTrade):
 
     timestamp, nonce, query_string, signature = generate_signature(method='POST', request_path=request_path, query_params=None, body=body)
 
-    headers = auth_headers(signature, timestamp, nonce)
+    headers = set_auth_headers(signature, timestamp, nonce)
 
     print(f"timestamp: {timestamp}")
     print(f"{BLOCKFIN_BASE_URL}{request_path}")
@@ -210,17 +275,6 @@ async def future_trade(trade_model: BlockFinTrade):
 
     print(f"응답: {response_json}")
 
-    return response_json
-
-
-@router.post('/future/position-mode')
-async def set_position_mode(postion_mode: str):
-    request_path = '/api/v1/account/set-position-mode'
-    body = { "positionMode": postion_mode }
-    timestamp, nonce, query_string, signature = generate_signature(method='POST', request_path=request_path, query_params=None, body=body)
-    headers = auth_headers(signature, timestamp, nonce)
-    response_json = requests.post(f"{BLOCKFIN_BASE_URL}{request_path}", headers=headers, json=body).json()
-    print(response_json)
     return response_json
 
 
@@ -234,7 +288,7 @@ async def set_leverage(leverage_model: BlockFinLeverage):
         "positionSide": leverage_model.position_side
     }
     timestamp, nonce, query_string, signature = generate_signature(method='POST', request_path=request_path, query_params=None, body=body)
-    headers = auth_headers(signature, timestamp, nonce)
+    headers = set_auth_headers(signature, timestamp, nonce)
     response_json = requests.post(f"{BLOCKFIN_BASE_URL}{request_path}", headers=headers, json=body).json()
     print(response_json)
 
@@ -243,10 +297,54 @@ async def set_leverage(leverage_model: BlockFinLeverage):
 async def get_position_mode():
     request_path = '/api/v1/account/position-mode'
     timestamp, nonce, query_string, signature = generate_signature(method='GET', request_path=request_path)
-    headers = auth_headers(signature, timestamp, nonce)
+    headers = set_auth_headers(signature, timestamp, nonce)
     response_json = requests.get(f"{BLOCKFIN_BASE_URL}{request_path}", headers=headers).json()
     print(response_json)
 
 
+@router.websocket('/ws/future/authenticate')
+async def blockfin_ws_login(websocket: WebSocket):
+    await websocket.accept()
+
+    method = "GET"
+    path = "/users/self/verify"
+    timestamp, nonce, query_string, signature = generate_signature(method, path)
+
+    login_msg = {
+        "op": "login",
+        "args": [{
+            "apiKey": BLOCKFIN_API_KEY.strip(),
+            "passphrase": BLOCKFIN_API_PASSPHRASE.strip(),
+            "timestamp": timestamp.strip(),
+            "sign": signature.strip(),
+            "nonce": nonce
+        }]
+    }
+
+    # TODO: ROI * 레버리지 반영할 것.
+    async with websockets.connect(BLOCKFIN_WS_PRIVATE_URL) as blockfin_ws:
+        await blockfin_ws.send(json.dumps(login_msg))
+        login_resp = await blockfin_ws.recv()
+        print(login_resp)
+
+        if '"event":"login"' in login_resp and '"code":"0"' in login_resp:
+            print("✅ Login success, subscribing to positions...")
+            position_msg = {
+                "op": "subscribe",
+                "args": [
+                    {
+                        "channel": "positions",
+                        "instId": "BTC-USDT"
+                    },
+                    {
+                        "channel": "positions",
+                        "instId": "ETH-USDT"
+                    }
+                ]
+            }
+            while True:
+                await blockfin_ws.send(json.dumps(position_msg))
+                positions = await blockfin_ws.recv()
+                print(positions)
 
 # TODO: GET Futures Account Balance --> GET /api/v1/account/balance --> https://docs.blockfin.com/index.html#get-futures-account-balance

@@ -2,6 +2,12 @@ from typing import Optional
 
 from .base import *
 
+class LoginForm(Base):
+    uid: str
+    api_key: str
+    passphrase: str
+
+
 class BlockFinTrade(Base):
     """
         market: market order
