@@ -79,19 +79,24 @@ async def validate_key(login_data: Annotated[LoginForm, Form()]):
     response_json = requests.get(url=f"{BLOCKFIN_BASE_URL}{request_path}?{query_string}", headers=headers).json()
     uid = response_json['data']['uid']
 
-    return_obj = {}
-
+    return_obj = {
+        'msg': response_json['msg']
+    }
     if login_data.uid != uid:
+        return_obj['msg'] = 'Invalidate UID'
         return_obj['valid'] = False
 
     if login_data.uid == uid and response_json['msg'] == 'success':
         return_obj['valid'] = True
 
-    return response_json
+    print(return_obj)
+    return return_obj
 
 
-@router.post('/login')
-async def login(login_data: Annotated[LoginForm, Form()]):
+@router.websocket('/ws/login')
+async def login(login_data: Annotated[LoginForm, Form()], websocket: WebSocket):
+    await websocket.accept()
+
     # select해서 없으면 insert처리
     return_obj = dict(success=True, is_validate=True, waiting=False, redirect='http://localhost:5000/main')
     return return_obj
@@ -322,29 +327,37 @@ async def blockfin_ws_login(websocket: WebSocket):
     }
 
     # TODO: ROI * 레버리지 반영할 것.
+    # 포지션이 존재하는 심볼만 response됨.
     async with websockets.connect(BLOCKFIN_WS_PRIVATE_URL) as blockfin_ws:
         await blockfin_ws.send(json.dumps(login_msg))
         login_resp = await blockfin_ws.recv()
-        print(login_resp)
+        print(f"LOGIN_RESP: {login_resp}")
 
         if '"event":"login"' in login_resp and '"code":"0"' in login_resp:
             print("✅ Login success, subscribing to positions...")
-            position_msg = {
+            subscribe_msg = {
                 "op": "subscribe",
                 "args": [
                     {
-                        "channel": "positions",
-                        "instId": "BTC-USDT"
-                    },
-                    {
-                        "channel": "positions",
-                        "instId": "ETH-USDT"
+                        "channel": "positions"
                     }
                 ]
             }
+            for symbol in ['BTC-USDT', 'ETH-USDT']:
+                subscribe_msg['args'][0]['instId'] = symbol
+                await blockfin_ws.send(json.dumps(subscribe_msg))
+
+            # push 데이터 수신 루프
             while True:
-                await blockfin_ws.send(json.dumps(position_msg))
-                positions = await blockfin_ws.recv()
-                print(positions)
+                try:
+                    msg = await blockfin_ws.recv()
+                    data = json.loads(msg)
+                    print(data)
+                    # await blockfin_ws.send(json.dumps(position_msg))
+                    # positions = await blockfin_ws.recv()
+                    # print(f"POSITIONS: {positions}")
+                except Exception as e:
+                    print(f"Error in recv loop: {e}")
+                    break
 
 # TODO: GET Futures Account Balance --> GET /api/v1/account/balance --> https://docs.blockfin.com/index.html#get-futures-account-balance

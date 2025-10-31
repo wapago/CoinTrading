@@ -5,6 +5,7 @@ from .base import *
 class LoginForm(Base):
     uid: str
     api_key: str
+    secret_key: str
     passphrase: str
 
 
