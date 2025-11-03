@@ -102,34 +102,9 @@ async def login(login_data: Annotated[LoginForm, Form()], websocket: WebSocket):
     return return_obj
 
 
-# async def check_approval_loop(uid: str, websocket: WebSocket):
-#     try:
-#         while True:
-#             await asyncio.sleep(2)
-#
-#
-#
-# @router.websocket('/ws/check/approval')
-# async def ws_check_approval(websocket: WebSocket):
-#     await websocket.accept()
-#     uid = None
-#
-#     try:
-#         while True:
-#             msg = await websocket.receive_json()
-#             if msg.get('type') == 'register_waiting':
-#                 uid = msg.get('uid')
-#                 register_waiting.setdefault(uid, set()).add(websocket)
-#                 print(f"계정 승인 대기 등록 uid: {uid}")
-#                 asyncio.create_task(check_approval_loop(uid, websocket))
-#     except WebSocketDisconnect:
-#         if uid and websocket in register_waiting.get(uid, set()):
-#             register_waiting[uid].remove(websocket)
-#             print(f"연결 종료: {uid}")
-
-
-@router.get('/user/spot/asset')
-async def user_spot_asset():
+# 유저 선물계좌조회
+@router.get('/user/asset')
+async def user_asset():
     query_params = {
         "accountType": "futures"
     }
@@ -163,7 +138,7 @@ async def get_order_book(inst_id: str = None):
 
     return response_json
 
-
+# 심볼정보조회
 @router.get('/symbols')
 async def get_symbols(inst_id: str = None):
     query_params = {
@@ -180,7 +155,54 @@ async def get_symbols(inst_id: str = None):
     return response_json
 
 
-# TODO: FUTURE 밸런스 체크
+@router.websocket('/ws/account/future')
+async def get_future(websocket: WebSocket):
+    await websocket.accept()
+
+    method = "GET"
+    path = "/users/self/verify"
+    timestamp, nonce, query_string, signature = generate_signature(method, path)
+
+    login_msg = {
+        "op": "login",
+        "args": [{
+            "apiKey": BLOCKFIN_API_KEY.strip(),
+            "passphrase": BLOCKFIN_API_PASSPHRASE.strip(),
+            "timestamp": timestamp.strip(),
+            "sign": signature.strip(),
+            "nonce": nonce
+        }]
+    }
+
+    async with websockets.connect(BLOCKFIN_WS_PRIVATE_URL, ping_interval=30, ping_timeout=10) as blockfin_ws:
+        await blockfin_ws.send(json.dumps(login_msg))
+        login_resp = await blockfin_ws.recv()
+        print(f"LOGIN_RESP: {login_resp}")
+
+        if '"event":"login"' in login_resp and '"code":"0"' in login_resp:
+            print("Login success")
+            subscribe_msg = {
+                "op": "subscribe",
+                "args": [
+                    {
+                        "channel": "account"
+                    }
+                ]
+            }
+            await blockfin_ws.send(json.dumps(subscribe_msg))
+
+            # push 데이터 수신 루프
+            while True:
+                try:
+                    msg = await blockfin_ws.recv()
+                    data = json.loads(msg)
+                    print(data)
+                except Exception as e:
+                    print(f"Error in recv loop: {e}")
+                    break
+
+
+# 현재가 조회
 @router.websocket('/ws/future/currency')
 async def get_future_currency(websocket: WebSocket):
     await websocket.accept()
@@ -195,7 +217,6 @@ async def get_future_currency(websocket: WebSocket):
             ]
         }
         await blockfin_ws.send(json.dumps(subscribe_msg))
-
         try:
             while True:
                 msg = await blockfin_ws.recv()
@@ -359,5 +380,3 @@ async def blockfin_ws_login(websocket: WebSocket):
                 except Exception as e:
                     print(f"Error in recv loop: {e}")
                     break
-
-# TODO: GET Futures Account Balance --> GET /api/v1/account/balance --> https://docs.blockfin.com/index.html#get-futures-account-balance
